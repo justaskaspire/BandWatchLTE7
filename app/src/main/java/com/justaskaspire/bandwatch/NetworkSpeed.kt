@@ -18,8 +18,9 @@ object NetworkSpeed {
     }
 
     /**
-     * Compact label for the tiny status-bar notification icon.
-     * Examples: 0, 850K, 1.2M. The full rate remains in notification text.
+     * Ultra-compact label for Android's narrow status-bar icon slot.
+     * Kilo-byte values below 1 MB/s omit the K suffix (e.g. 850 = 850 KB/s)
+     * to give the digits more room. The notification body keeps the full unit.
      */
     fun statusBarLabel(bytesPerSecond: Long?): String {
         if (bytesPerSecond == null) return "—"
@@ -28,15 +29,16 @@ object NetworkSpeed {
         val rate = bytesPerSecond.toDouble()
         return when {
             rate >= 1024.0 * 1024.0 * 1024.0 ->
-                String.format(Locale.US, "%.1fG", rate / (1024.0 * 1024.0 * 1024.0))
+                String.format(Locale.US, "%.0fG", rate / (1024.0 * 1024.0 * 1024.0))
+            rate >= 10.0 * 1024.0 * 1024.0 ->
+                String.format(Locale.US, "%.0fM", rate / (1024.0 * 1024.0))
             rate >= 1024.0 * 1024.0 ->
                 String.format(Locale.US, "%.1fM", rate / (1024.0 * 1024.0))
             rate >= 10.0 * 1024.0 ->
-                String.format(Locale.US, "%.0fK", rate / 1024.0)
+                String.format(Locale.US, "%.0f", rate / 1024.0)
             rate >= 1024.0 ->
-                String.format(Locale.US, "%.1fK", rate / 1024.0)
-            else ->
-                String.format(Locale.US, "%.1fK", rate / 1024.0)
+                String.format(Locale.US, "%.0fK", rate / 1024.0)
+            else -> "<1K"
         }
     }
 
