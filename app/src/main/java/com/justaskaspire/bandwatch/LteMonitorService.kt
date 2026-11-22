@@ -22,6 +22,7 @@ class LteMonitorService : Service() {
     private lateinit var telephony: TelephonyManager
     private val prefs by lazy { getSharedPreferences("bandwatch", MODE_PRIVATE) }
     private var lastBand: String? = null
+    private var currentBand: String? = null
     private val poller = object : Runnable {
         override fun run() { readNetwork(); handler.postDelayed(this, 5000) }
     }
@@ -43,6 +44,7 @@ class LteMonitorService : Service() {
         try {
             val serving = telephony.allCellInfo?.filterIsInstance<CellInfoLte>()?.firstOrNull { it.isRegistered }
             if (serving == null) {
+                currentBand = null
                 save("LTE data unavailable", -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
                 updateNotification("LTE data unavailable — check signal and Location Services")
                 return
@@ -54,14 +56,17 @@ class LteMonitorService : Service() {
                 in 2750..3449 -> "Band 7"
                 else -> "LTE band unknown"
             }
+            currentBand = band
             save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
             updateNotification("${band} • RSRP ${metric(signal.rsrp)} dBm")
             if (band == "Band 7" && lastBand != "Band 7") sendBand7Alert()
             lastBand = band
         } catch (_: SecurityException) {
+            currentBand = null
             save("Permission required", -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
             updateNotification("Permission required — open BandWatch")
         } catch (_: Exception) {
+            currentBand = null
             save("Reading unavailable", -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
             updateNotification("LTE reading unavailable")
         }
@@ -90,12 +95,18 @@ class LteMonitorService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
         return if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, "monitor")
             .setContentTitle("BandWatch").setContentText(message)
-            .setSmallIcon(android.R.drawable.stat_notify_sync).setContentIntent(pending).setOngoing(true).build()
+            .setSmallIcon(statusBarIcon()).setContentIntent(pending).setOngoing(true).build()
         else {
             @Suppress("DEPRECATION")
             Notification.Builder(this).setContentTitle("BandWatch").setContentText(message)
                 .setSmallIcon(android.R.drawable.stat_notify_sync).setContentIntent(pending).setOngoing(true).build()
         }
+    }
+
+    private fun statusBarIcon(): Int = when (currentBand) {
+        "Band 3" -> R.drawable.ic_band3
+        "Band 7" -> R.drawable.ic_band7
+        else -> android.R.drawable.stat_notify_sync
     }
 
     private fun updateNotification(message: String) {
@@ -105,7 +116,7 @@ class LteMonitorService : Service() {
     private fun sendBand7Alert() {
         val pending = PendingIntent.getActivity(this, 7, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
-        val alert = Notification.Builder(this, "band7").setSmallIcon(android.R.drawable.stat_notify_more)
+        val alert = Notification.Builder(this, "band7").setSmallIcon(R.drawable.ic_band7)
             .setContentTitle("Band 7 detected!").setContentText("Your phone connected to LTE Band 7.")
             .setContentIntent(pending).setAutoCancel(true).build()
         getSystemService(NotificationManager::class.java).notify(7, alert)
