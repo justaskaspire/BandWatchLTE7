@@ -51,6 +51,8 @@ class MainActivity : Activity() {
     private val blue = Color.rgb(45, 139, 255)
     private val cyan = Color.rgb(62, 220, 255)
     private val green = Color.rgb(61, 226, 158)
+    private val band7Green = Color.rgb(45, 214, 130)
+    private val band3Blue = Color.rgb(65, 145, 255)
 
     private val dashboardRefresh = object : Runnable {
         override fun run() {
@@ -378,10 +380,9 @@ class MainActivity : Activity() {
         }
         val rxBytes = TrafficStats.getMobileRxBytes()
         val txBytes = TrafficStats.getMobileTxBytes()
-        val band = LteBand.shortName(prefs.getString("band", null))
         if (rxBytes < 0L || txBytes < 0L) {
             previousRxBytes = null; previousTxBytes = null; previousSpeedSampleAt = 0L
-            speedValue.text = "— KB/s | $band"
+            speedValue.text = "— KB/s"
             return
         }
         val now = SystemClock.elapsedRealtime()
@@ -392,7 +393,7 @@ class MainActivity : Activity() {
         else NetworkSpeed.combinedBytesPerSecond((rxBytes - oldRx).coerceAtLeast(0L),
             (txBytes - oldTx).coerceAtLeast(0L), elapsed)
         previousRxBytes = rxBytes; previousTxBytes = txBytes; previousSpeedSampleAt = now
-        speedValue.text = "${NetworkSpeed.format(bytesPerSecond)} | $band"
+        speedValue.text = NetworkSpeed.format(bytesPerSecond)
     }
 
     private fun refresh() {
@@ -402,7 +403,7 @@ class MainActivity : Activity() {
         val rsrq = prefs.getInt("rsrq", Int.MAX_VALUE)
         val sinr = prefs.getInt("sinr", Int.MAX_VALUE)
         val active = band == "Band 3" || band == "Band 7"
-        val accent = if (band == "Band 7") cyan else blue
+        val accent = if (band == "Band 7") band7Green else band3Blue
         bandValue.text = when (band) { "Band 3" -> "B3"; "Band 7" -> "B7"; else -> "—" }
         bandValue.setTextColor(accent)
         bandCaption.text = when (band) {
