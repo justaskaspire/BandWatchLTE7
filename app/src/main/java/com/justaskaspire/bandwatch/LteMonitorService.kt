@@ -221,10 +221,12 @@ class LteMonitorService : Service() {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                // Set one fixed size based on a worst-case three-digit value.
-                // This keeps 1-, 2-, and 3-digit readings at the same visual height.
+                // Use one smaller fixed size for every reading, fitting the widest
+                // three-digit value once so 1-, 2-, and 3-digit values stay consistent.
                 val maxWidth = 51f
-                textSize = 54f * maxWidth / measureText("888")
+                textSize = 42f
+                val measuredMax = measureText("888")
+                if (measuredMax > maxWidth) textSize *= maxWidth / measuredMax
             }
             canvas.drawText(number, 25f, 49f, numberPaint)
 
