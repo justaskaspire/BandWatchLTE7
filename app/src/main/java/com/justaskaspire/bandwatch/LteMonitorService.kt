@@ -209,11 +209,10 @@ class LteMonitorService : Service() {
         }
     }
 
-    /** Compact monochrome status-bar icon: live speed number plus a band-specific shape. */
+    /** Compact monochrome status-bar icon: large live speed number, with a dot only on LTE Band 7. */
     private fun statusBarIcon(): Icon {
         if (prefs.getBoolean("speed_indicator_enabled", true)) {
-            // The number changes units automatically: KB/s below 1 MB/s, MB/s above it.
-            // The unit text is omitted to keep the permanent status-bar icon compact.
+            // The number changes units automatically; unit text is omitted to maximize digit size.
             val number = NetworkSpeed.statusBarLabel(latestSpeedBytesPerSecond)
             val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
@@ -222,44 +221,25 @@ class LteMonitorService : Service() {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                textSize = 42f
-                val maxWidth = 46f
-                if (measureText(number) > maxWidth) textSize *= maxWidth / measureText(number)
+                textSize = 54f
+                val maxWidth = 51f
+                val measured = measureText(number)
+                if (measured > maxWidth) textSize *= maxWidth / measured
             }
-            canvas.drawText(number, 24f, 47f, numberPaint)
+            canvas.drawText(number, 25f, 49f, numberPaint)
 
-            // Android renders small status-bar notification icons as monochrome masks.
-            // Use shape, not color, to distinguish the LTE band.
-            val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-                style = Paint.Style.FILL
-            }
-            when (currentBand) {
-                "Band 7" -> {
-                    val diamond = android.graphics.Path().apply {
-                        moveTo(55f, 33f)
-                        lineTo(62f, 40f)
-                        lineTo(55f, 47f)
-                        lineTo(48f, 40f)
-                        close()
-                    }
-                    canvas.drawPath(diamond, markerPaint)
+            // A small dot appears only while connected to LTE Band 7.
+            if (currentBand == "Band 7") {
+                val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = Color.WHITE
+                    style = Paint.Style.FILL
                 }
-                "Band 3" -> canvas.drawCircle(55f, 40f, 6f, markerPaint)
-                else -> {
-                    markerPaint.style = Paint.Style.STROKE
-                    markerPaint.strokeWidth = 2.5f
-                    canvas.drawCircle(55f, 40f, 5f, markerPaint)
-                }
+                canvas.drawCircle(58f, 42f, 3.5f, dotPaint)
             }
             return Icon.createWithBitmap(bitmap)
         }
-        val iconRes = when (currentBand) {
-            "Band 3" -> R.drawable.ic_band3
-            "Band 7" -> R.drawable.ic_band7
-            else -> android.R.drawable.stat_notify_sync
-        }
-        return Icon.createWithResource(this, iconRes)
+        // No band-specific icon when the live speed indicator is disabled.
+        return Icon.createWithResource(this, android.R.drawable.stat_notify_sync)
     }
 
     private fun updateNotification(message: String) { latestBandMessage = message; refreshOngoingNotification() }
