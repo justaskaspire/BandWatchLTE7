@@ -98,6 +98,25 @@ class MainActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
         }
+        // Android 15 enforces edge-to-edge for target SDK 35. Apply system-bar
+        // insets to the shell so the header and bottom navigation stay visible.
+        shell.setOnApplyWindowInsetsListener { view, insets ->
+            val topInset: Int
+            val bottomInset: Int
+            if (Build.VERSION.SDK_INT >= 30) {
+                val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars())
+                topInset = bars.top
+                bottomInset = bars.bottom
+            } else {
+                @Suppress("DEPRECATION")
+                run {
+                    topInset = insets.systemWindowInsetTop
+                    bottomInset = insets.systemWindowInsetBottom
+                }
+            }
+            view.setPadding(0, topInset, 0, bottomInset)
+            insets
+        }
         pageHost = FrameLayout(this)
         shell.addView(pageHost, LinearLayout.LayoutParams(-1, 0, 1f))
         val nav = LinearLayout(this).apply {
