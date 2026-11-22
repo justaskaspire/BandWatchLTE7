@@ -159,6 +159,16 @@ class MainActivity : Activity() {
             }
         }
         root.addView(stop, LinearLayout.LayoutParams(-1, dp(48)))
+        root.addView(space(12))
+        val historyButton = Button(this).apply {
+            text = "VIEW CONNECTION HISTORY"
+            isAllCaps = false
+            textSize = 13f
+            setTextColor(cyan)
+            background = rounded(Color.rgb(20, 49, 65), 14)
+            setOnClickListener { startActivity(Intent(this@MainActivity, HistoryActivity::class.java)) }
+        }
+        root.addView(historyButton, LinearLayout.LayoutParams(-1, dp(48)))
         root.addView(space(20))
         root.addView(label("Band 7 alerts are handled by the background monitoring service.", 11f, muted, false))
         root.addView(label("Keep Location Services enabled for LTE cell readings.", 11f, muted, false).apply { setPadding(0, dp(5), 0, 0) })
