@@ -30,6 +30,14 @@ class NetworkSpeedTest {
         assertEquals("1.25 MB/s", NetworkSpeed.format(1_310_720L))
     }
 
+    @Test fun createsCompactNumericStatusBarLabels() {
+        assertEquals("0", NetworkSpeed.statusBarLabel(0L))
+        assertEquals("1.0K", NetworkSpeed.statusBarLabel(1_024L))
+        assertEquals("850K", NetworkSpeed.statusBarLabel(870_400L))
+        assertEquals("1.2M", NetworkSpeed.statusBarLabel(1_258_291L))
+        assertEquals("—", NetworkSpeed.statusBarLabel(null))
+    }
+
     @Test fun formatsUnsupportedCounter() {
         assertEquals("— KB/s", NetworkSpeed.format(-1L))
     }
