@@ -49,7 +49,7 @@ class LteMonitorService : Service() {
         override fun run() { requestNetworkReading(); handler.postDelayed(this, 5000) }
     }
     private val speedPoller = object : Runnable {
-        override fun run() { sampleMobileSpeed(); handler.postDelayed(this, 1000) }
+        override fun run() { sampleMobileSpeed(); refreshSpeedOverlay(); handler.postDelayed(this, 1000) }
     }
 
     override fun onCreate() {
