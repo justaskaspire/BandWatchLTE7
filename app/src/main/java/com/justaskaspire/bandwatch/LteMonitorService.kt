@@ -278,10 +278,11 @@ class LteMonitorService : Service() {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
+                // Use the largest practical glyph size inside Android's fixed icon slot.
                 textSize = when {
-                    label.length >= 4 -> 22f
-                    label.length == 3 -> 27f
-                    else -> 32f
+                    label.length >= 4 -> 25f
+                    label.length == 3 -> 32f
+                    else -> 38f
                 }
             }
             val metrics = paint.fontMetrics
