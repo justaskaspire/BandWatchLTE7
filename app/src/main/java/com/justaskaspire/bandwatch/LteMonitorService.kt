@@ -7,10 +7,12 @@ import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.location.LocationManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.telephony.CellInfo
 import android.telephony.CellInfoLte
 import android.telephony.TelephonyManager
 import com.justaskaspire.bandwatch.R
@@ -24,8 +26,12 @@ class LteMonitorService : Service() {
     private val prefs by lazy { getSharedPreferences("bandwatch", MODE_PRIVATE) }
     private var lastBand: String? = null
     private var currentBand: String? = null
+
     private val poller = object : Runnable {
-        override fun run() { readNetwork(); handler.postDelayed(this, 5000) }
+        override fun run() {
+            requestNetworkReading()
+            handler.postDelayed(this, 5000)
+        }
     }
 
     override fun onCreate() {
@@ -35,42 +41,73 @@ class LteMonitorService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(1, notification("Monitoring LTE network…"))
+        startForeground(1, notification("Starting LTE monitor…"))
         handler.removeCallbacks(poller)
         handler.post(poller)
         return START_STICKY
     }
 
-    private fun readNetwork() {
+    @Suppress("DEPRECATION")
+    private fun requestNetworkReading() {
         try {
-            val serving = telephony.allCellInfo?.filterIsInstance<CellInfoLte>()?.firstOrNull { it.isRegistered }
-            if (serving == null) {
-                currentBand = null
-                save("LTE data unavailable", -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
-                updateNotification("LTE data unavailable — check signal and Location Services")
-                return
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Ask Android for a fresh cell-info snapshot instead of repeatedly
+                // relying on allCellInfo, which can be stale or temporarily empty.
+                telephony.requestCellInfoUpdate(mainExecutor, object : TelephonyManager.CellInfoCallback() {
+                    override fun onCellInfo(cellInfo: MutableList<CellInfo>) {
+                        processCellInfo(cellInfo)
+                    }
+
+                    override fun onError(errorCode: Int, detail: Throwable?) {
+                        showUnavailable("Android cell-info request failed ($errorCode)")
+                    }
+                })
+            } else {
+                processCellInfo(telephony.allCellInfo)
             }
-            val earfcn = serving.cellIdentity.earfcn
-            val signal = serving.cellSignalStrength
-            val band = when (earfcn) {
-                in 1200..1949 -> "Band 3"
-                in 2750..3449 -> "Band 7"
-                else -> "LTE band unknown"
-            }
-            currentBand = band
-            save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
-            updateNotification("${band} • RSRP ${metric(signal.rsrp)} dBm")
-            if (band == "Band 7" && lastBand != "Band 7") sendBand7Alert()
-            lastBand = band
         } catch (_: SecurityException) {
-            currentBand = null
-            save("Permission required", -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
-            updateNotification("Permission required — open BandWatch")
+            showUnavailable("Permission missing — check Phone and Precise Location access")
         } catch (_: Exception) {
-            currentBand = null
-            save("Reading unavailable", -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
-            updateNotification("LTE reading unavailable")
+            showUnavailable("Android could not provide cell information")
         }
+    }
+
+    private fun processCellInfo(cells: List<CellInfo>?) {
+        val serving = cells?.filterIsInstance<CellInfoLte>()?.firstOrNull { it.isRegistered }
+        if (serving == null) {
+            val locationOn = try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    getSystemService(LocationManager::class.java).isLocationEnabled
+                } else true
+            } catch (_: Exception) { true }
+
+            val reason = if (!locationOn) {
+                "Location Services are OFF — enable Location"
+            } else {
+                "No registered LTE cell returned by Android — retrying"
+            }
+            showUnavailable(reason)
+            return
+        }
+
+        val earfcn = serving.cellIdentity.earfcn
+        val signal = serving.cellSignalStrength
+        val band = when (earfcn) {
+            in 1200..1949 -> "Band 3"
+            in 2750..3449 -> "Band 7"
+            else -> "LTE band unknown"
+        }
+        currentBand = band
+        save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
+        updateNotification("${band} • RSRP ${metric(signal.rsrp)} dBm")
+        if (band == "Band 7" && lastBand != "Band 7") sendBand7Alert()
+        lastBand = band
+    }
+
+    private fun showUnavailable(reason: String) {
+        currentBand = null
+        save(reason, -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
+        updateNotification(reason)
     }
 
     private fun save(band: String, earfcn: Int, rsrp: Int, rsrq: Int, sinr: Int) {
@@ -124,6 +161,9 @@ class LteMonitorService : Service() {
     }
 
     private fun metric(value: Int) = if (value == Int.MAX_VALUE) "—" else value.toString()
-    override fun onDestroy() { handler.removeCallbacks(poller); super.onDestroy() }
+    override fun onDestroy() {
+        handler.removeCallbacks(poller)
+        super.onDestroy()
+    }
     override fun onBind(intent: Intent?): IBinder? = null
 }
