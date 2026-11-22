@@ -25,7 +25,18 @@ class HistoryActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        try {
+            renderHistory()
+        } catch (error: Exception) {
+            showFallback()
+        }
+    }
+
+    private fun renderHistory() {
+        val scroll = ScrollView(this).apply {
+            setBackgroundColor(bg)
+            isFillViewport = true
+        }
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(24), dp(20), dp(28))
@@ -56,7 +67,9 @@ class HistoryActivity : Activity() {
         val prefs = getSharedPreferences("bandwatch", MODE_PRIVATE)
         val entries = try {
             JSONArray(prefs.getString("history_json", "[]") ?: "[]")
-        } catch (_: Exception) { JSONArray() }
+        } catch (_: Exception) {
+            JSONArray()
+        }
 
         if (entries.length() == 0) {
             root.addView(card().apply {
@@ -77,19 +90,23 @@ class HistoryActivity : Activity() {
             val dateFormat = SimpleDateFormat("dd MMM yyyy • HH:mm:ss", Locale.getDefault())
             val now = System.currentTimeMillis()
             for (i in entries.length() - 1 downTo 0) {
-                val item = entries.getJSONObject(i)
+                // Ignore malformed entries rather than allowing one bad record to crash the screen.
+                val item = entries.optJSONObject(i) ?: continue
                 val band = item.optString("band", "LTE")
-                val timestamp = item.optLong("timestamp", now)
-                val endTime = if (i == entries.length() - 1) now else entries.getJSONObject(i + 1).optLong("timestamp", timestamp)
-                val duration = formatDuration((endTime - timestamp).coerceAtLeast(0L))
-                val accent = if (band == "Band 7") cyan else blue
+                val timestamp = item.optLong("timestamp", now).coerceIn(0L, now)
+                val nextItem = if (i < entries.length() - 1) entries.optJSONObject(i + 1) else null
+                val nextTimestamp = nextItem?.optLong("timestamp", timestamp) ?: now
+                val duration = formatDuration((nextTimestamp - timestamp).coerceAtLeast(0L))
+                val isBand7 = band == "Band 7"
+                val accent = if (isBand7) cyan else blue
+
                 root.addView(card().apply {
                     val header = LinearLayout(this@HistoryActivity).apply {
                         orientation = LinearLayout.HORIZONTAL
                         gravity = Gravity.CENTER_VERTICAL
                     }
                     header.addView(TextView(this@HistoryActivity).apply {
-                        text = if (band == "Band 7") "BAND 7" else "BAND 3"
+                        text = if (isBand7) "BAND 7" else if (band == "Band 3") "BAND 3" else band.uppercase(Locale.getDefault())
                         textSize = 19f
                         setTextColor(accent)
                         typeface = Typeface.DEFAULT_BOLD
@@ -119,18 +136,49 @@ class HistoryActivity : Activity() {
                         setPadding(0, dp(5), 0, 0)
                     })
                 })
-                root.addView(LinearLayout(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(10)) })
+                root.addView(LinearLayout(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(1, dp(10))
+                })
             }
         }
 
-        val back = TextView(this).apply {
+        root.addView(TextView(this).apply {
             text = "←  Back to dashboard"
             textSize = 14f
             setTextColor(cyan)
             setPadding(0, dp(16), 0, dp(8))
             setOnClickListener { finish() }
+        })
+    }
+
+    private fun showFallback() {
+        val root = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(dp(24), dp(24), dp(24), dp(24))
+            setBackgroundColor(bg)
         }
-        root.addView(back)
+        root.addView(TextView(this).apply {
+            text = "History is temporarily unavailable"
+            textSize = 20f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            gravity = Gravity.CENTER
+        })
+        root.addView(TextView(this).apply {
+            text = "Your LTE monitor is separate and can keep running. Return to the dashboard and try again later."
+            textSize = 13f
+            setTextColor(muted)
+            gravity = Gravity.CENTER
+            setPadding(0, dp(12), 0, dp(20))
+        })
+        root.addView(TextView(this).apply {
+            text = "←  Back to dashboard"
+            textSize = 14f
+            setTextColor(cyan)
+            setOnClickListener { finish() }
+        })
+        setContentView(root)
     }
 
     private fun metric(item: JSONObject, key: String): String {
