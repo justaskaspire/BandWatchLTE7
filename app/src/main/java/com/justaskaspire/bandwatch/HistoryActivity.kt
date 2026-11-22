@@ -20,7 +20,8 @@ class HistoryActivity : Activity() {
     private val panel = Color.rgb(16, 25, 45)
     private val muted = Color.rgb(151, 169, 196)
     private val cyan = Color.rgb(62, 220, 255)
-    private val blue = Color.rgb(45, 139, 255)
+    private val blue = Color.rgb(65, 145, 255)
+    private val band7Green = Color.rgb(45, 214, 130)
     private val green = Color.rgb(61, 226, 158)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,7 +99,7 @@ class HistoryActivity : Activity() {
                 val nextTimestamp = nextItem?.optLong("timestamp", timestamp) ?: now
                 val duration = formatDuration((nextTimestamp - timestamp).coerceAtLeast(0L))
                 val isBand7 = band == "Band 7"
-                val accent = if (isBand7) cyan else blue
+                val accent = if (isBand7) band7Green else blue
 
                 root.addView(card().apply {
                     val header = LinearLayout(this@HistoryActivity).apply {
