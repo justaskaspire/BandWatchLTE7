@@ -7,13 +7,16 @@ import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.net.TrafficStats
 import android.os.Build
 import android.os.Bundle
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
 
@@ -27,13 +30,36 @@ class MainActivity : Activity() {
     private lateinit var sinrValue: TextView
     private lateinit var updatedValue: TextView
     private lateinit var stateValue: TextView
+    private lateinit var speedValue: TextView
+    private lateinit var speedSwitch: Switch
     private lateinit var startButton: Button
+    private var previousRxBytes: Long? = null
+    private var previousTxBytes: Long? = null
+    private var previousSpeedSampleAt = 0L
     private val bg = Color.rgb(7, 12, 25)
     private val panel = Color.rgb(16, 25, 45)
     private val muted = Color.rgb(151, 169, 196)
     private val blue = Color.rgb(45, 139, 255)
     private val cyan = Color.rgb(62, 220, 255)
     private val green = Color.rgb(61, 226, 158)
+
+    private val dashboardRefresh = object : Runnable {
+        override fun run() {
+            if (::bandValue.isInitialized && !isFinishing) {
+                refresh()
+                bandValue.postDelayed(this, 2500)
+            }
+        }
+    }
+
+    private val speedRefresh = object : Runnable {
+        override fun run() {
+            if (::speedValue.isInitialized && !isFinishing) {
+                refreshSpeed()
+                speedValue.postDelayed(this, 1000)
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,15 +69,20 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (::bandValue.isInitialized) refresh()
-        bandValue.postDelayed(object : Runnable {
-            override fun run() {
-                if (!isFinishing) {
-                    refresh()
-                    bandValue.postDelayed(this, 2500)
-                }
-            }
-        }, 2500)
+        if (::bandValue.isInitialized) {
+            bandValue.removeCallbacks(dashboardRefresh)
+            dashboardRefresh.run()
+        }
+        if (::speedValue.isInitialized) {
+            speedValue.removeCallbacks(speedRefresh)
+            speedRefresh.run()
+        }
+    }
+
+    override fun onPause() {
+        if (::bandValue.isInitialized) bandValue.removeCallbacks(dashboardRefresh)
+        if (::speedValue.isInitialized) speedValue.removeCallbacks(speedRefresh)
+        super.onPause()
     }
 
     private fun buildDashboard() {
@@ -107,6 +138,35 @@ class MainActivity : Activity() {
         earfcnRow.addView(earfcnValue)
         hero.addView(earfcnRow)
         root.addView(hero)
+
+        // Compact live-speed card: the existing dashboard layout remains otherwise unchanged.
+        root.addView(space(14))
+        val speedCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(15), dp(18), dp(14))
+            background = rounded(panel, 18)
+        }
+        speedCard.addView(label("LIVE NETWORK SPEED", 10f, muted, true))
+        speedValue = label("0 KB/s | —", 23f, cyan, true).apply { setPadding(0, dp(7), 0, dp(10)) }
+        speedCard.addView(speedValue)
+        val speedSettingRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        speedSettingRow.addView(label("Enable speed indicator", 12f, muted, false), LinearLayout.LayoutParams(0, -2, 1f))
+        speedSwitch = Switch(this).apply {
+            isChecked = prefs.getBoolean("speed_indicator_enabled", true)
+            setOnCheckedChangeListener { _, enabled ->
+                prefs.edit().putBoolean("speed_indicator_enabled", enabled).apply()
+                previousRxBytes = null
+                previousTxBytes = null
+                previousSpeedSampleAt = 0L
+                refreshSpeed()
+            }
+        }
+        speedSettingRow.addView(speedSwitch)
+        speedCard.addView(speedSettingRow)
+        root.addView(speedCard)
 
         root.addView(space(24))
         root.addView(label("SIGNAL METRICS", 12f, muted, true))
@@ -172,6 +232,45 @@ class MainActivity : Activity() {
         root.addView(space(20))
         root.addView(label("Band 7 alerts are handled by the background monitoring service.", 11f, muted, false))
         root.addView(label("Keep Location Services enabled for LTE cell readings.", 11f, muted, false).apply { setPadding(0, dp(5), 0, 0) })
+    }
+
+    private fun refreshSpeed() {
+        if (!prefs.getBoolean("speed_indicator_enabled", true)) {
+            speedValue.text = "Speed indicator disabled"
+            previousRxBytes = null
+            previousTxBytes = null
+            previousSpeedSampleAt = 0L
+            return
+        }
+
+        val rxBytes = TrafficStats.getMobileRxBytes()
+        val txBytes = TrafficStats.getMobileTxBytes()
+        val band = LteBand.shortName(prefs.getString("band", null))
+        if (rxBytes < 0L || txBytes < 0L) {
+            previousRxBytes = null
+            previousTxBytes = null
+            previousSpeedSampleAt = 0L
+            speedValue.text = "— KB/s | $band"
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        val oldRx = previousRxBytes
+        val oldTx = previousTxBytes
+        val elapsed = now - previousSpeedSampleAt
+        val bytesPerSecond = if (oldRx == null || oldTx == null || previousSpeedSampleAt == 0L) {
+            0L
+        } else {
+            NetworkSpeed.combinedBytesPerSecond(
+                (rxBytes - oldRx).coerceAtLeast(0L),
+                (txBytes - oldTx).coerceAtLeast(0L),
+                elapsed
+            )
+        }
+        previousRxBytes = rxBytes
+        previousTxBytes = txBytes
+        previousSpeedSampleAt = now
+        speedValue.text = "${NetworkSpeed.format(bytesPerSecond)} | $band"
     }
 
     private fun metricCard(title: String, initial: String, unit: String, accent: Int): LinearLayout {
