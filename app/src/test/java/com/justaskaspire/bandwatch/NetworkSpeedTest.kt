@@ -32,9 +32,11 @@ class NetworkSpeedTest {
 
     @Test fun createsCompactNumericStatusBarLabels() {
         assertEquals("0", NetworkSpeed.statusBarLabel(0L))
-        assertEquals("1.0K", NetworkSpeed.statusBarLabel(1_024L))
-        assertEquals("850K", NetworkSpeed.statusBarLabel(870_400L))
+        assertEquals("1K", NetworkSpeed.statusBarLabel(1_024L))
+        assertEquals("850", NetworkSpeed.statusBarLabel(870_400L))
         assertEquals("1.2M", NetworkSpeed.statusBarLabel(1_258_291L))
+        assertEquals("<1K", NetworkSpeed.statusBarLabel(500L))
+        assertEquals("12M", NetworkSpeed.statusBarLabel(12L * 1024L * 1024L))
         assertEquals("—", NetworkSpeed.statusBarLabel(null))
     }
 
