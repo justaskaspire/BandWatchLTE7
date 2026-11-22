@@ -33,6 +33,7 @@ class LteMonitorService : Service() {
 
     private var latestBandMessage = "Starting LTE monitor…"
     private var latestSpeedText = "0 KB/s"
+    private var latestSpeedBytesPerSecond: Long? = 0L
     private var speedWasEnabled = true
     private var previousRxBytes: Long? = null
     private var previousTxBytes: Long? = null
@@ -147,7 +148,7 @@ class LteMonitorService : Service() {
             previousRxBytes = null
             previousTxBytes = null
             previousSpeedSampleAt = 0L
-            setSpeedText("— KB/s")
+            setSpeedText("— KB/s", null)
             return
         }
 
@@ -168,13 +169,25 @@ class LteMonitorService : Service() {
         previousRxBytes = rxBytes
         previousTxBytes = txBytes
         previousSpeedSampleAt = now
-        setSpeedText(NetworkSpeed.format(bytesPerSecond))
+        setSpeedText(NetworkSpeed.format(bytesPerSecond), bytesPerSecond)
     }
 
-    private fun setSpeedText(value: String) {
-        if (latestSpeedText == value) return
+    private fun setSpeedText(value: String, bytesPerSecond: Long?) {
+        val oldLevel = speedLevel(latestSpeedBytesPerSecond)
+        val newLevel = speedLevel(bytesPerSecond)
+        if (latestSpeedText == value && oldLevel == newLevel) return
         latestSpeedText = value
+        latestSpeedBytesPerSecond = bytesPerSecond
         refreshOngoingNotification()
+    }
+
+    // Icon thresholds: idle = 0, slow < 128 KB/s, medium < 1 MB/s, fast >= 1 MB/s.
+    private fun speedLevel(bytesPerSecond: Long?): Int = when {
+        bytesPerSecond == null -> -1
+        bytesPerSecond <= 0L -> 0
+        bytesPerSecond < 128L * 1024L -> 1
+        bytesPerSecond < 1024L * 1024L -> 2
+        else -> 3
     }
 
     private fun recordBandChange(band: String, earfcn: Int, rsrp: Int, rsrq: Int, sinr: Int) {
@@ -245,10 +258,21 @@ class LteMonitorService : Service() {
         }
     }
 
-    private fun statusBarIcon(): Int = when (currentBand) {
-        "Band 3" -> R.drawable.ic_band3
-        "Band 7" -> R.drawable.ic_band7
-        else -> android.R.drawable.stat_notify_sync
+    private fun statusBarIcon(): Int {
+        if (prefs.getBoolean("speed_indicator_enabled", true)) {
+            return when (speedLevel(latestSpeedBytesPerSecond)) {
+                0 -> R.drawable.ic_speed_idle
+                1 -> R.drawable.ic_speed_slow
+                2 -> R.drawable.ic_speed_medium
+                3 -> R.drawable.ic_speed_fast
+                else -> android.R.drawable.stat_notify_sync
+            }
+        }
+        return when (currentBand) {
+            "Band 3" -> R.drawable.ic_band3
+            "Band 7" -> R.drawable.ic_band7
+            else -> android.R.drawable.stat_notify_sync
+        }
     }
 
     private fun updateNotification(message: String) {
