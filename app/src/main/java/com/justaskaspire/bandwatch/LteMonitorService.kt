@@ -62,7 +62,6 @@ class LteMonitorService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(1, notification(latestBandMessage))
-
         handler.removeCallbacks(poller); handler.removeCallbacks(speedPoller)
         handler.post(poller); handler.post(speedPoller)
         return START_STICKY
@@ -99,7 +98,6 @@ class LteMonitorService : Service() {
         val band = LteBand.fromEarfcn(earfcn)
         currentBand = band
         save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
-
         if (band == "Band 3" || band == "Band 7") recordBandChange(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
         updateNotification("${band} • RSRP ${metric(signal.rsrp)} dBm")
         if (band == "Band 7" && lastBand != "Band 7") sendBand7Alert()
@@ -111,7 +109,6 @@ class LteMonitorService : Service() {
         if (!enabled) {
             previousRxBytes = null; previousTxBytes = null; previousSpeedSampleAt = 0L
             if (speedWasEnabled) { speedWasEnabled = false; refreshOngoingNotification() }
-
             return
         }
         if (!speedWasEnabled) {
@@ -143,7 +140,6 @@ class LteMonitorService : Service() {
         latestSpeedText = value
         latestSpeedBytesPerSecond = bytesPerSecond
         refreshOngoingNotification()
-
     }
 
     private fun speedLevel(bytesPerSecond: Long?): Int = when {
@@ -171,7 +167,6 @@ class LteMonitorService : Service() {
     private fun showUnavailable(reason: String) {
         currentBand = null
         save(reason, -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
-
         updateNotification(reason)
     }
 
@@ -216,14 +211,12 @@ class LteMonitorService : Service() {
             val number = NetworkSpeed.statusBarLabel(latestSpeedBytesPerSecond)
             val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
-
             val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                // Keep the full 48px glyph height. Fit three-digit readings
-                // horizontally only, so the width limit cannot shrink the text vertically.
-                textSize = 48f
+                // Keep the full glyph height. Fit three-digit readings horizontally only.
+                textSize = 50f
             }
             val maxWidth = 51f
             val measuredMax = numberPaint.measureText("888")
@@ -232,7 +225,6 @@ class LteMonitorService : Service() {
             canvas.scale(horizontalScale, 1f, 25f, 49f)
             canvas.drawText(number, 25f, 49f, numberPaint)
             canvas.restore()
-
             // A small dot appears only while connected to LTE Band 7.
             if (currentBand == "Band 7") {
                 val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
