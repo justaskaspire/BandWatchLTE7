@@ -208,6 +208,8 @@ class LteMonitorService : Service() {
         if (prefs.getBoolean("speed_indicator_enabled", true)) {
             val number = NetworkSpeed.statusBarLabel(latestSpeedBytesPerSecond)
             val unit = NetworkSpeed.statusBarUnit(latestSpeedBytesPerSecond)
+            val bandNumber = LteBand.shortName(currentBand).removePrefix("B")
+            val unitAndBand = "$unit | $bandNumber"
             val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
             val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -220,10 +222,12 @@ class LteMonitorService : Service() {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                textSize = 14f
+                textSize = 10.5f
             }
-            canvas.drawText(number, 32f, 35f, numberPaint)
-            canvas.drawText(unit, 32f, 53f, unitPaint)
+            // Use the largest practical two-line glyphs; Android still controls
+            // the final status-bar icon scale on each device.
+            canvas.drawText(number, 32f, 36f, numberPaint)
+            canvas.drawText(unitAndBand, 32f, 54f, unitPaint)
             return Icon.createWithBitmap(bitmap)
         }
         val iconRes = when (currentBand) {
