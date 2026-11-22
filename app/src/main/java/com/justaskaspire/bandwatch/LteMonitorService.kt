@@ -221,14 +221,17 @@ class LteMonitorService : Service() {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                // Use one smaller fixed size for every reading, fitting the widest
-                // three-digit value once so 1-, 2-, and 3-digit values stay consistent.
-                val maxWidth = 51f
+                // Keep the full 48px glyph height. Fit three-digit readings
+                // horizontally only, so the width limit cannot shrink the text vertically.
                 textSize = 48f
-                val measuredMax = measureText("888")
-                if (measuredMax > maxWidth) textSize *= maxWidth / measuredMax
             }
+            val maxWidth = 51f
+            val measuredMax = numberPaint.measureText("888")
+            val horizontalScale = (maxWidth / measuredMax).coerceAtMost(1f)
+            canvas.save()
+            canvas.scale(horizontalScale, 1f, 25f, 49f)
             canvas.drawText(number, 25f, 49f, numberPaint)
+            canvas.restore()
 
             // A small dot appears only while connected to LTE Band 7.
             if (currentBand == "Band 7") {
