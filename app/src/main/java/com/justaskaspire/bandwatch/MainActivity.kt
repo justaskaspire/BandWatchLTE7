@@ -319,10 +319,8 @@ class MainActivity : Activity() {
                 previousRxBytes = null
                 previousTxBytes = null
                 previousSpeedSampleAt = 0L
-                val service = Intent(this@MainActivity, LteMonitorService::class.java)
-                if (enabled) {
-                    if (Build.VERSION.SDK_INT >= 26) startForegroundService(service) else startService(service)
-                }
+                // The running service reads this preference on its next poll.
+                // Do not start monitoring just because the display option changed.
             }
         })
         speedCard.addView(settingRow)
