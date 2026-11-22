@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [main, android-native-mvp]
+    branches: [main, android-native-mvp, statusbar-band-icons]
   workflow_dispatch:
 
 jobs:
