@@ -4,7 +4,6 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -12,7 +11,6 @@ import android.net.TrafficStats
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
-import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -46,8 +44,6 @@ class MainActivity : Activity() {
     private var previousRxBytes: Long? = null
     private var previousTxBytes: Long? = null
     private var previousSpeedSampleAt = 0L
-    private var pendingOverlayPermission = false
-    private var overlaySwitch: Switch? = null
 
     private val bg = Color.rgb(7, 12, 25)
     private val panel = Color.rgb(16, 25, 45)
@@ -83,13 +79,6 @@ class MainActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
-        if (pendingOverlayPermission) {
-            pendingOverlayPermission = false
-            val granted = Settings.canDrawOverlays(this)
-            prefs.edit().putBoolean("floating_speed_enabled", granted).apply()
-            overlaySwitch?.isChecked = granted
-            Toast.makeText(this, if (granted) "Floating speed indicator enabled" else "Overlay permission was not granted", Toast.LENGTH_SHORT).show()
-        }
         if (selectedTab == 0 && ::bandValue.isInitialized) {
             bandValue.removeCallbacks(dashboardRefresh)
             dashboardRefresh.run()
@@ -375,37 +364,6 @@ class MainActivity : Activity() {
         speedCard.addView(settingRow)
         root.addView(speedCard)
         root.addView(space(10))
-        val overlayCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(17), dp(15), dp(17), dp(15))
-            background = rounded(panel, 18)
-        }
-        val overlayRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        val overlayText = column()
-        overlayText.addView(label("Floating speed indicator", 14f, Color.WHITE, true))
-        overlayText.addView(label("Large coloured speed pill over other apps. Drag it to move.", 10f, muted, false).apply { setPadding(0, dp(4), 0, 0) })
-        overlayRow.addView(overlayText, LinearLayout.LayoutParams(0, -2, 1f))
-        overlaySwitch = Switch(this).apply {
-            isChecked = prefs.getBoolean("floating_speed_enabled", false) && Settings.canDrawOverlays(this@MainActivity)
-            setOnCheckedChangeListener { _, enabled ->
-                if (enabled && !Settings.canDrawOverlays(this@MainActivity)) {
-                    pendingOverlayPermission = true
-                    isChecked = false
-                    Toast.makeText(this@MainActivity, "Allow BandWatch to display over other apps.", Toast.LENGTH_LONG).show()
-                    try {
-                        startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-                    } catch (_: Exception) {
-                        pendingOverlayPermission = false
-                    }
-                } else {
-                    prefs.edit().putBoolean("floating_speed_enabled", enabled).apply()
-                }
-            }
-        }
-        overlayRow.addView(overlaySwitch)
-        overlayCard.addView(overlayRow)
-        root.addView(overlayCard)
-        root.addView(space(12))
         root.addView(infoCard("About the speed reading",
             "BandWatch combines mobile download (RX) and upload (TX) traffic. It refreshes about once per second and does not include Wi-Fi traffic."))
         root.addView(space(10))
