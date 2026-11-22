@@ -224,7 +224,7 @@ class LteMonitorService : Service() {
                 // Use one smaller fixed size for every reading, fitting the widest
                 // three-digit value once so 1-, 2-, and 3-digit values stay consistent.
                 val maxWidth = 51f
-                textSize = 42f
+                textSize = 48f
                 val measuredMax = measureText("888")
                 if (measuredMax > maxWidth) textSize *= maxWidth / measuredMax
             }
