@@ -213,6 +213,11 @@ class LteMonitorService : Service() {
 
     /** Maximum-fit two-line status icon: large speed number and readable unit + LTE band. */
     private fun statusBarIcon(): Icon {
+        // The floating pill carries the full coloured speed text. Keep only a
+        // neutral foreground-service glyph in the monochrome status bar.
+        if (prefs.getBoolean("floating_speed_enabled", false)) {
+            return Icon.createWithResource(this, android.R.drawable.stat_notify_sync)
+        }
         if (prefs.getBoolean("speed_indicator_enabled", true)) {
             val number = NetworkSpeed.statusBarLabel(latestSpeedBytesPerSecond)
             val unit = NetworkSpeed.statusBarUnit(latestSpeedBytesPerSecond)
