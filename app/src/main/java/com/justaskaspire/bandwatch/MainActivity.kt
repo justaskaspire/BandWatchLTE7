@@ -122,7 +122,7 @@ class MainActivity : Activity() {
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(12), dp(7), dp(12), dp(7))
+            setPadding(dp(12), dp(5), dp(12), dp(5))
             setBackgroundColor(Color.rgb(11, 19, 36))
             elevation = dp(14).toFloat()
         }
@@ -131,7 +131,9 @@ class MainActivity : Activity() {
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(0, dp(6), 0, dp(6))
+                // Give the icon and label enough vertical room so the selected
+                // tab title cannot be clipped on smaller Android screens.
+                setPadding(0, dp(4), 0, dp(4))
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { showTab(index) }
@@ -139,16 +141,18 @@ class MainActivity : Activity() {
             val symbols = listOf("▦", "◷", "⚙")
             item.addView(label(symbols[index], 22f, muted, true).apply {
                 gravity = Gravity.CENTER
+                includeFontPadding = false
             })
-            item.addView(label(title, 10.5f, muted, true).apply {
+            item.addView(label(title, 11f, muted, true).apply {
                 gravity = Gravity.CENTER
-                setPadding(0, dp(3), 0, 0)
+                includeFontPadding = false
+                setPadding(0, dp(2), 0, 0)
             })
             nav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
             items.add(item)
         }
         navItems = items
-        shell.addView(nav, LinearLayout.LayoutParams(-1, dp(70)))
+        shell.addView(nav, LinearLayout.LayoutParams(-1, dp(78)))
         setContentView(shell)
     }
 
@@ -181,11 +185,11 @@ class MainActivity : Activity() {
             )
             (item.getChildAt(0) as TextView).apply {
                 setTextColor(if (active) cyan else Color.rgb(139, 157, 184))
-                textSize = if (active) 23f else 21f
+                textSize = if (active) 22f else 21f
             }
             (item.getChildAt(1) as TextView).apply {
                 setTextColor(if (active) Color.WHITE else Color.rgb(139, 157, 184))
-                textSize = if (active) 10.5f else 10f
+                textSize = if (active) 11f else 10.5f
             }
         }
     }
