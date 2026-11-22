@@ -17,6 +17,29 @@ object NetworkSpeed {
             .coerceAtLeast(0L)
     }
 
+    /**
+     * Compact label for the tiny status-bar notification icon.
+     * Examples: 0, 850K, 1.2M. The full rate remains in notification text.
+     */
+    fun statusBarLabel(bytesPerSecond: Long?): String {
+        if (bytesPerSecond == null) return "—"
+        if (bytesPerSecond <= 0L) return "0"
+
+        val rate = bytesPerSecond.toDouble()
+        return when {
+            rate >= 1024.0 * 1024.0 * 1024.0 ->
+                String.format(Locale.US, "%.1fG", rate / (1024.0 * 1024.0 * 1024.0))
+            rate >= 1024.0 * 1024.0 ->
+                String.format(Locale.US, "%.1fM", rate / (1024.0 * 1024.0))
+            rate >= 10.0 * 1024.0 ->
+                String.format(Locale.US, "%.0fK", rate / 1024.0)
+            rate >= 1024.0 ->
+                String.format(Locale.US, "%.1fK", rate / 1024.0)
+            else ->
+                String.format(Locale.US, "%.1fK", rate / 1024.0)
+        }
+    }
+
     fun format(bytesPerSecond: Long): String {
         if (bytesPerSecond < 0L) return "— KB/s"
         if (bytesPerSecond == 0L) return "0 KB/s"
