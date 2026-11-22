@@ -189,11 +189,12 @@ class LteMonitorService : Service() {
 
     private fun notification(message: String): Notification {
         val speedEnabled = prefs.getBoolean("speed_indicator_enabled", true)
-        val contentText = if (speedEnabled) "$latestSpeedText | ${LteBand.shortName(currentBand)}" else message
+        val contentText = if (speedEnabled) latestSpeedText else message
         val pending = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
         return if (Build.VERSION.SDK_INT >= 26) {
             Notification.Builder(this, "monitor").setContentTitle("BandWatch").setContentText(contentText)
+                .setColor(when (currentBand) { "Band 7" -> Color.rgb(45, 214, 130); "Band 3" -> Color.rgb(65, 145, 255); else -> Color.rgb(220, 65, 65) })
                 .apply { if (speedEnabled) setSubText(message) }
                 .setSmallIcon(statusBarIcon()).setContentIntent(pending).setOngoing(true).build()
         } else {
@@ -208,8 +209,7 @@ class LteMonitorService : Service() {
         if (prefs.getBoolean("speed_indicator_enabled", true)) {
             val number = NetworkSpeed.statusBarLabel(latestSpeedBytesPerSecond)
             val unit = NetworkSpeed.statusBarUnit(latestSpeedBytesPerSecond)
-            val bandNumber = LteBand.shortName(currentBand).removePrefix("B")
-            val unitAndBand = "$unit | $bandNumber"
+            val unitLabel = unit
             val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
 
@@ -228,16 +228,16 @@ class LteMonitorService : Service() {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                // Slightly enlarge the unit + LTE band line while preserving the original icon width.
+                // Keep the unit readable; the band is communicated by dashboard color and notification accent.
                 textSize = 20f
                 val maxWidth = 62f
-                if (measureText(unitAndBand) > maxWidth) {
-                    textSize *= maxWidth / measureText(unitAndBand)
+                if (measureText(unitLabel) > maxWidth) {
+                    textSize *= maxWidth / measureText(unitLabel)
                 }
             }
 
             canvas.drawText(number, 32f, 37f, numberPaint)
-            canvas.drawText(unitAndBand, 32f, 60f, detailPaint)
+            canvas.drawText(unitLabel, 32f, 60f, detailPaint)
             return Icon.createWithBitmap(bitmap)
         }
         val iconRes = when (currentBand) {
