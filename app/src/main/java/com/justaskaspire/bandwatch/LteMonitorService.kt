@@ -203,7 +203,7 @@ class LteMonitorService : Service() {
         }
     }
 
-    /** Two-line icon: numeric rate above, KB/S or MB/S below. System icon scaling is device-controlled. */
+    /** Maximum-fit two-line status icon: large speed number and readable unit + LTE band. */
     private fun statusBarIcon(): Icon {
         if (prefs.getBoolean("speed_indicator_enabled", true)) {
             val number = NetworkSpeed.statusBarLabel(latestSpeedBytesPerSecond)
@@ -212,22 +212,32 @@ class LteMonitorService : Service() {
             val unitAndBand = "$unit | $bandNumber"
             val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
+
             val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                textSize = when { number.length >= 4 -> 27f; number.length == 3 -> 34f; else -> 39f }
+                // Start very large, then fit the complete number inside the icon.
+                textSize = 48f
+                val maxWidth = 62f
+                if (measureText(number) > maxWidth) {
+                    textSize *= maxWidth / measureText(number)
+                }
             }
-            val unitPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            val detailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
-                typeface = Typeface.create("sans-serif", Typeface.BOLD)
+                typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                textSize = 10.5f
+                // Larger than the previous 10.5 px label so KB/S | 7 remains legible.
+                textSize = 16f
+                val maxWidth = 62f
+                if (measureText(unitAndBand) > maxWidth) {
+                    textSize *= maxWidth / measureText(unitAndBand)
+                }
             }
-            // Use the largest practical two-line glyphs; Android still controls
-            // the final status-bar icon scale on each device.
-            canvas.drawText(number, 32f, 36f, numberPaint)
-            canvas.drawText(unitAndBand, 32f, 54f, unitPaint)
+
+            canvas.drawText(number, 32f, 37f, numberPaint)
+            canvas.drawText(unitAndBand, 32f, 60f, detailPaint)
             return Icon.createWithBitmap(bitmap)
         }
         val iconRes = when (currentBand) {
