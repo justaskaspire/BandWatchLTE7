@@ -16,6 +16,8 @@ import android.telephony.CellInfo
 import android.telephony.CellInfoLte
 import android.telephony.TelephonyManager
 import com.justaskaspire.bandwatch.R
+import org.json.JSONArray
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -37,6 +39,7 @@ class LteMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         telephony = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        lastBand = prefs.getString("history_last_band", null)
         createChannels()
     }
 
@@ -51,13 +54,10 @@ class LteMonitorService : Service() {
     private fun requestNetworkReading() {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                // Ask Android for a fresh cell-info snapshot instead of repeatedly
-                // relying on allCellInfo, which can be stale or temporarily empty.
                 telephony.requestCellInfoUpdate(mainExecutor, object : TelephonyManager.CellInfoCallback() {
                     override fun onCellInfo(cellInfo: MutableList<CellInfo>) {
                         processCellInfo(cellInfo)
                     }
-
                     override fun onError(errorCode: Int, detail: Throwable?) {
                         showUnavailable("Android cell-info request failed ($errorCode)")
                     }
@@ -80,7 +80,6 @@ class LteMonitorService : Service() {
                     getSystemService(LocationManager::class.java).isLocationEnabled
                 } else true
             } catch (_: Exception) { true }
-
             val reason = if (!locationOn) {
                 "Location Services are OFF — enable Location"
             } else {
@@ -99,9 +98,36 @@ class LteMonitorService : Service() {
         }
         currentBand = band
         save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
+        if (band == "Band 3" || band == "Band 7") recordBandChange(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
         updateNotification("${band} • RSRP ${metric(signal.rsrp)} dBm")
         if (band == "Band 7" && lastBand != "Band 7") sendBand7Alert()
-        lastBand = band
+        if (band == "Band 3" || band == "Band 7") lastBand = band
+    }
+
+    private fun recordBandChange(band: String, earfcn: Int, rsrp: Int, rsrq: Int, sinr: Int) {
+        if (lastBand == band) return
+        val history = try {
+            JSONArray(prefs.getString("history_json", "[]") ?: "[]")
+        } catch (_: Exception) {
+            JSONArray()
+        }
+        val entry = JSONObject().apply {
+            put("band", band)
+            put("timestamp", System.currentTimeMillis())
+            put("earfcn", earfcn)
+            put("rsrp", rsrp)
+            put("rsrq", rsrq)
+            put("sinr", sinr)
+        }
+        history.put(entry)
+        // Keep the latest 300 transitions to prevent unbounded storage growth.
+        val trimmed = JSONArray()
+        val first = (history.length() - 300).coerceAtLeast(0)
+        for (i in first until history.length()) trimmed.put(history.getJSONObject(i))
+        prefs.edit()
+            .putString("history_json", trimmed.toString())
+            .putString("history_last_band", band)
+            .apply()
     }
 
     private fun showUnavailable(reason: String) {
