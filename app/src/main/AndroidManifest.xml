@@ -10,5 +10,6 @@
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
         </activity>
         <service android:name=".LteMonitorService" android:exported="false" android:foregroundServiceType="location" />
+        <activity android:name=".HistoryActivity" android:exported="false" />
     </application>
 </manifest>
