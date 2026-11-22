@@ -210,16 +210,16 @@ class LteMonitorService : Service() {
             val unit = NetworkSpeed.statusBarUnit(latestSpeedBytesPerSecond)
             val bandNumber = LteBand.shortName(currentBand).removePrefix("B")
             val unitAndBand = "$unit | $bandNumber"
-            val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+            val bitmap = Bitmap.createBitmap(96, 64, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
 
             val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                // Start very large, then fit the complete number inside the icon.
+                // Keep the speed number prominent while using the wider status icon.
                 textSize = 48f
-                val maxWidth = 62f
+                val maxWidth = 94f
                 if (measureText(number) > maxWidth) {
                     textSize *= maxWidth / measureText(number)
                 }
@@ -228,16 +228,16 @@ class LteMonitorService : Service() {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                // Larger than the previous 10.5 px label so KB/S | 7 remains legible.
-                textSize = 16f
-                val maxWidth = 62f
+                // Double the unit + LTE band label size; the wider bitmap gives it room.
+                textSize = 32f
+                val maxWidth = 94f
                 if (measureText(unitAndBand) > maxWidth) {
                     textSize *= maxWidth / measureText(unitAndBand)
                 }
             }
 
-            canvas.drawText(number, 32f, 37f, numberPaint)
-            canvas.drawText(unitAndBand, 32f, 60f, detailPaint)
+            canvas.drawText(number, 48f, 37f, numberPaint)
+            canvas.drawText(unitAndBand, 48f, 60f, detailPaint)
             return Icon.createWithBitmap(bitmap)
         }
         val iconRes = when (currentBand) {
