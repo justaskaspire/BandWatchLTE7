@@ -27,7 +27,22 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: "8.9"
-      - name: Run unit tests and build debug APK
+      - name: Prepare permanent APK signing key
+        env:
+          BANDWATCH_KEYSTORE_BASE64: ${{ secrets.BANDWATCH_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$BANDWATCH_KEYSTORE_BASE64" ]; then
+            echo "Missing BANDWATCH_KEYSTORE_BASE64 repository secret."
+            exit 1
+          fi
+          echo "$BANDWATCH_KEYSTORE_BASE64" | base64 --decode > bandwatch-release.jks
+          test -s bandwatch-release.jks
+      - name: Run unit tests and build signed debug APK
+        env:
+          BANDWATCH_KEYSTORE_PATH: bandwatch-release.jks
+          BANDWATCH_KEYSTORE_PASSWORD: ${{ secrets.BANDWATCH_KEYSTORE_PASSWORD }}
+          BANDWATCH_KEY_ALIAS: ${{ secrets.BANDWATCH_KEY_ALIAS }}
+          BANDWATCH_KEY_PASSWORD: ${{ secrets.BANDWATCH_KEY_PASSWORD }}
         run: gradle testDebugUnitTest assembleDebug
       - name: Upload APK
         uses: actions/upload-artifact@v4
