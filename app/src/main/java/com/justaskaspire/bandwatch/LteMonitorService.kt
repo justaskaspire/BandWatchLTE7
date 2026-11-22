@@ -8,6 +8,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Typeface
+import android.graphics.drawable.Icon
 import android.net.TrafficStats
 import android.os.Build
 import android.os.Handler
@@ -258,21 +264,38 @@ class LteMonitorService : Service() {
         }
     }
 
-    private fun statusBarIcon(): Int {
+    /**
+     * Android status-bar small icons are monochrome and very small. Render a
+     * short numeric rate into a transparent bitmap so the icon itself shows
+     * a live value (for example 850K or 1.2M), rather than speed-level bars.
+     */
+    private fun statusBarIcon(): Icon {
         if (prefs.getBoolean("speed_indicator_enabled", true)) {
-            return when (speedLevel(latestSpeedBytesPerSecond)) {
-                0 -> R.drawable.ic_speed_idle
-                1 -> R.drawable.ic_speed_slow
-                2 -> R.drawable.ic_speed_medium
-                3 -> R.drawable.ic_speed_fast
-                else -> android.R.drawable.stat_notify_sync
+            val label = NetworkSpeed.statusBarLabel(latestSpeedBytesPerSecond)
+            val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
+            val canvas = Canvas(bitmap)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
+                textAlign = Paint.Align.CENTER
+                textSize = when {
+                    label.length >= 4 -> 22f
+                    label.length == 3 -> 27f
+                    else -> 32f
+                }
             }
+            val metrics = paint.fontMetrics
+            val baseline = (64f - metrics.ascent - metrics.descent) / 2f
+            canvas.drawText(label, 32f, baseline, paint)
+            return Icon.createWithBitmap(bitmap)
         }
-        return when (currentBand) {
+
+        val iconRes = when (currentBand) {
             "Band 3" -> R.drawable.ic_band3
             "Band 7" -> R.drawable.ic_band7
             else -> android.R.drawable.stat_notify_sync
         }
+        return Icon.createWithResource(this, iconRes)
     }
 
     private fun updateNotification(message: String) {
