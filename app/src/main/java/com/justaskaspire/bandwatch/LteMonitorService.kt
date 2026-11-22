@@ -209,12 +209,12 @@ class LteMonitorService : Service() {
         }
     }
 
-    /** Maximum-fit two-line status icon: large speed number and readable unit + LTE band. */
+    /** Compact monochrome status-bar icon: live speed number plus a band-specific shape. */
     private fun statusBarIcon(): Icon {
         if (prefs.getBoolean("speed_indicator_enabled", true)) {
+            // The number changes units automatically: KB/s below 1 MB/s, MB/s above it.
+            // The unit text is omitted to keep the permanent status-bar icon compact.
             val number = NetworkSpeed.statusBarLabel(latestSpeedBytesPerSecond)
-            val unit = NetworkSpeed.statusBarUnit(latestSpeedBytesPerSecond)
-            val unitLabel = unit
             val bitmap = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
             val canvas = Canvas(bitmap)
 
@@ -222,27 +222,36 @@ class LteMonitorService : Service() {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
                 textAlign = Paint.Align.CENTER
-                // Preserve the original speed-number size and original 64px icon width.
-                textSize = 48f
-                val maxWidth = 62f
-                if (measureText(number) > maxWidth) {
-                    textSize *= maxWidth / measureText(number)
-                }
+                textSize = 42f
+                val maxWidth = 46f
+                if (measureText(number) > maxWidth) textSize *= maxWidth / measureText(number)
             }
-            val detailPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.WHITE
-                typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
-                textAlign = Paint.Align.CENTER
-                // Keep the unit readable; the band is communicated by dashboard color and notification accent.
-                textSize = 20f
-                val maxWidth = 62f
-                if (measureText(unitLabel) > maxWidth) {
-                    textSize *= maxWidth / measureText(unitLabel)
-                }
-            }
+            canvas.drawText(number, 24f, 47f, numberPaint)
 
-            canvas.drawText(number, 32f, 37f, numberPaint)
-            canvas.drawText(unitLabel, 32f, 60f, detailPaint)
+            // Android renders small status-bar notification icons as monochrome masks.
+            // Use shape, not color, to distinguish the LTE band.
+            val markerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                style = Paint.Style.FILL
+            }
+            when (currentBand) {
+                "Band 7" -> {
+                    val diamond = android.graphics.Path().apply {
+                        moveTo(55f, 33f)
+                        lineTo(62f, 40f)
+                        lineTo(55f, 47f)
+                        lineTo(48f, 40f)
+                        close()
+                    }
+                    canvas.drawPath(diamond, markerPaint)
+                }
+                "Band 3" -> canvas.drawCircle(55f, 40f, 6f, markerPaint)
+                else -> {
+                    markerPaint.style = Paint.Style.STROKE
+                    markerPaint.strokeWidth = 2.5f
+                    canvas.drawCircle(55f, 40f, 5f, markerPaint)
+                }
+            }
             return Icon.createWithBitmap(bitmap)
         }
         val iconRes = when (currentBand) {
