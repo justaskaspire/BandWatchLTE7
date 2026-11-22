@@ -258,7 +258,6 @@ class MainActivity : Activity() {
             cornerRadius = dp(radius).toFloat()
             if (strokeColor != null) setStroke(dp(strokeWidth), strokeColor)
         }
-    private fun rounded(color: Int, radius: Int) = rounded(color, radius, null, 0)
     private fun space(height: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(height)) }
     private fun spaceHorizontal(width: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(width), 1) }
     private fun weighted() = LinearLayout.LayoutParams(0, dp(112), 1f)
