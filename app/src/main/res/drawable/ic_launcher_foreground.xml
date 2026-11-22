@@ -18,10 +18,8 @@
         android:strokeWidth="4"
         android:strokeLineCap="round"
         android:fillColor="@android:color/transparent" />
-    <circle
-        android:cx="54"
-        android:cy="40"
-        android:radius="3"
+    <path
+        android:pathData="M57,40 A3,3 0 1,1 51,40 A3,3 0 1,1 57,40"
         android:fillColor="#43D7FF" />
 
     <!-- Bold B -->
@@ -43,9 +41,7 @@
         android:fillColor="@android:color/transparent" />
 
     <!-- Small signal pulse -->
-    <circle
-        android:cx="82"
-        android:cy="79"
-        android:radius="3.5"
+    <path
+        android:pathData="M85.5,79 A3.5,3.5 0 1,1 78.5,79 A3.5,3.5 0 1,1 85.5,79"
         android:fillColor="#43D7FF" />
 </vector>
