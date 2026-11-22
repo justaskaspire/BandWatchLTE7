@@ -8,10 +8,12 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.location.LocationManager
+import android.net.TrafficStats
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.SystemClock
 import android.telephony.CellInfo
 import android.telephony.CellInfoLte
 import android.telephony.TelephonyManager
@@ -29,6 +31,13 @@ class LteMonitorService : Service() {
     private var lastBand: String? = null
     private var currentBand: String? = null
 
+    private var latestBandMessage = "Starting LTE monitor…"
+    private var latestSpeedText = "0 KB/s"
+    private var speedWasEnabled = true
+    private var previousRxBytes: Long? = null
+    private var previousTxBytes: Long? = null
+    private var previousSpeedSampleAt = 0L
+
     private val poller = object : Runnable {
         override fun run() {
             requestNetworkReading()
@@ -36,17 +45,28 @@ class LteMonitorService : Service() {
         }
     }
 
+    private val speedPoller = object : Runnable {
+        override fun run() {
+            sampleMobileSpeed()
+            handler.postDelayed(this, 1000)
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         telephony = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
         lastBand = prefs.getString("history_last_band", null)
+        currentBand = prefs.getString("band", null)?.takeIf { it == "Band 3" || it == "Band 7" }
+        speedWasEnabled = prefs.getBoolean("speed_indicator_enabled", true)
         createChannels()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(1, notification("Starting LTE monitor…"))
+        startForeground(1, notification(latestBandMessage))
         handler.removeCallbacks(poller)
+        handler.removeCallbacks(speedPoller)
         handler.post(poller)
+        handler.post(speedPoller)
         return START_STICKY
     }
 
@@ -91,17 +111,70 @@ class LteMonitorService : Service() {
 
         val earfcn = serving.cellIdentity.earfcn
         val signal = serving.cellSignalStrength
-        val band = when (earfcn) {
-            in 1200..1949 -> "Band 3"
-            in 2750..3449 -> "Band 7"
-            else -> "LTE band unknown"
-        }
+        val band = LteBand.fromEarfcn(earfcn)
         currentBand = band
         save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
         if (band == "Band 3" || band == "Band 7") recordBandChange(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
         updateNotification("${band} • RSRP ${metric(signal.rsrp)} dBm")
         if (band == "Band 7" && lastBand != "Band 7") sendBand7Alert()
         if (band == "Band 3" || band == "Band 7") lastBand = band
+    }
+
+    private fun sampleMobileSpeed() {
+        val enabled = prefs.getBoolean("speed_indicator_enabled", true)
+        if (!enabled) {
+            previousRxBytes = null
+            previousTxBytes = null
+            previousSpeedSampleAt = 0L
+            if (speedWasEnabled) {
+                speedWasEnabled = false
+                refreshOngoingNotification()
+            }
+            return
+        }
+
+        if (!speedWasEnabled) {
+            speedWasEnabled = true
+            previousRxBytes = null
+            previousTxBytes = null
+            previousSpeedSampleAt = 0L
+        }
+
+        // Mobile counters include combined cellular RX and TX traffic for the device.
+        val rxBytes = TrafficStats.getMobileRxBytes()
+        val txBytes = TrafficStats.getMobileTxBytes()
+        if (rxBytes < 0L || txBytes < 0L) {
+            previousRxBytes = null
+            previousTxBytes = null
+            previousSpeedSampleAt = 0L
+            setSpeedText("— KB/s")
+            return
+        }
+
+        val now = SystemClock.elapsedRealtime()
+        val oldRx = previousRxBytes
+        val oldTx = previousTxBytes
+        val elapsed = now - previousSpeedSampleAt
+        val bytesPerSecond = if (oldRx == null || oldTx == null || previousSpeedSampleAt == 0L) {
+            0L
+        } else {
+            NetworkSpeed.combinedBytesPerSecond(
+                (rxBytes - oldRx).coerceAtLeast(0L),
+                (txBytes - oldTx).coerceAtLeast(0L),
+                elapsed
+            )
+        }
+
+        previousRxBytes = rxBytes
+        previousTxBytes = txBytes
+        previousSpeedSampleAt = now
+        setSpeedText(NetworkSpeed.format(bytesPerSecond))
+    }
+
+    private fun setSpeedText(value: String) {
+        if (latestSpeedText == value) return
+        latestSpeedText = value
+        refreshOngoingNotification()
     }
 
     private fun recordBandChange(band: String, earfcn: Int, rsrp: Int, rsrq: Int, sinr: Int) {
@@ -155,14 +228,19 @@ class LteMonitorService : Service() {
     }
 
     private fun notification(message: String): Notification {
+        val speedEnabled = prefs.getBoolean("speed_indicator_enabled", true)
+        val contentText = if (speedEnabled) "$latestSpeedText | ${LteBand.shortName(currentBand)}" else message
         val pending = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
-        return if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, "monitor")
-            .setContentTitle("BandWatch").setContentText(message)
-            .setSmallIcon(statusBarIcon()).setContentIntent(pending).setOngoing(true).build()
-        else {
+        return if (Build.VERSION.SDK_INT >= 26) {
+            Notification.Builder(this, "monitor")
+                .setContentTitle("BandWatch")
+                .setContentText(contentText)
+                .apply { if (speedEnabled) setSubText(message) }
+                .setSmallIcon(statusBarIcon()).setContentIntent(pending).setOngoing(true).build()
+        } else {
             @Suppress("DEPRECATION")
-            Notification.Builder(this).setContentTitle("BandWatch").setContentText(message)
+            Notification.Builder(this).setContentTitle("BandWatch").setContentText(contentText)
                 .setSmallIcon(android.R.drawable.stat_notify_sync).setContentIntent(pending).setOngoing(true).build()
         }
     }
@@ -174,7 +252,12 @@ class LteMonitorService : Service() {
     }
 
     private fun updateNotification(message: String) {
-        getSystemService(NotificationManager::class.java).notify(1, notification(message))
+        latestBandMessage = message
+        refreshOngoingNotification()
+    }
+
+    private fun refreshOngoingNotification() {
+        getSystemService(NotificationManager::class.java).notify(1, notification(latestBandMessage))
     }
 
     private fun sendBand7Alert() {
@@ -187,9 +270,12 @@ class LteMonitorService : Service() {
     }
 
     private fun metric(value: Int) = if (value == Int.MAX_VALUE) "—" else value.toString()
+
     override fun onDestroy() {
         handler.removeCallbacks(poller)
+        handler.removeCallbacks(speedPoller)
         super.onDestroy()
     }
+
     override fun onBind(intent: Intent?): IBinder? = null
 }
