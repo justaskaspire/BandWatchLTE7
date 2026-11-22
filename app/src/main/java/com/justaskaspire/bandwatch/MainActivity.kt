@@ -122,31 +122,33 @@ class MainActivity : Activity() {
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER
-            setPadding(dp(10), dp(7), dp(10), dp(7))
-            setBackgroundColor(Color.rgb(10, 18, 34))
-            elevation = dp(10).toFloat()
+            setPadding(dp(12), dp(7), dp(12), dp(7))
+            setBackgroundColor(Color.rgb(11, 19, 36))
+            elevation = dp(14).toFloat()
         }
         val items = mutableListOf<LinearLayout>()
         listOf("Dashboard", "History", "Settings").forEachIndexed { index, title ->
             val item = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(0, dp(5), 0, dp(5))
+                setPadding(0, dp(6), 0, dp(6))
                 isClickable = true
                 isFocusable = true
                 setOnClickListener { showTab(index) }
             }
-            val symbols = listOf("⌂", "◷", "⚙")
-            item.addView(label(symbols[index], 20f, muted, true).apply { gravity = Gravity.CENTER })
-            item.addView(label(title, 10f, muted, true).apply {
+            val symbols = listOf("▦", "◷", "⚙")
+            item.addView(label(symbols[index], 22f, muted, true).apply {
                 gravity = Gravity.CENTER
-                setPadding(0, dp(2), 0, 0)
+            })
+            item.addView(label(title, 10.5f, muted, true).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, dp(3), 0, 0)
             })
             nav.addView(item, LinearLayout.LayoutParams(0, -1, 1f))
             items.add(item)
         }
         navItems = items
-        shell.addView(nav, LinearLayout.LayoutParams(-1, dp(62)))
+        shell.addView(nav, LinearLayout.LayoutParams(-1, dp(70)))
         setContentView(shell)
     }
 
@@ -171,9 +173,20 @@ class MainActivity : Activity() {
     private fun updateNavigation() {
         navItems.forEachIndexed { index, item ->
             val active = index == selectedTab
-            item.background = rounded(if (active) Color.rgb(20, 49, 65) else Color.TRANSPARENT, 14)
-            (item.getChildAt(0) as TextView).setTextColor(if (active) cyan else muted)
-            (item.getChildAt(1) as TextView).setTextColor(if (active) Color.WHITE else muted)
+            item.background = rounded(
+                if (active) Color.rgb(19, 47, 68) else Color.TRANSPARENT,
+                17,
+                if (active) Color.rgb(35, 91, 126) else null,
+                1
+            )
+            (item.getChildAt(0) as TextView).apply {
+                setTextColor(if (active) cyan else Color.rgb(139, 157, 184))
+                textSize = if (active) 23f else 21f
+            }
+            (item.getChildAt(1) as TextView).apply {
+                setTextColor(if (active) Color.WHITE else Color.rgb(139, 157, 184))
+                textSize = if (active) 10.5f else 10f
+            }
         }
     }
 
