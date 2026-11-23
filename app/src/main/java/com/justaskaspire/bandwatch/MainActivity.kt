@@ -4,7 +4,10 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.TrafficStats
@@ -33,6 +36,8 @@ class MainActivity : Activity() {
     private lateinit var bandValue: TextView
     private lateinit var bandCaption: TextView
     private lateinit var simValue: TextView
+    private lateinit var towerValue: TextView
+    private lateinit var signalGraph: SignalGraphView
     private lateinit var earfcnValue: TextView
     private lateinit var rsrpValue: TextView
     private lateinit var rsrqValue: TextView
@@ -271,6 +276,36 @@ class MainActivity : Activity() {
         metrics.addView(metricCard("STATUS", "—", "LTE", Color.rgb(184, 145, 255)), metricWeight())
         root.addView(metrics)
 
+        root.addView(space(12))
+        val graphCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(15), dp(16), dp(13))
+            background = rounded(panel, 18, Color.rgb(37, 67, 105), 1)
+        }
+        val graphHeader = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        graphHeader.addView(label("SIGNAL HISTORY", 10f, muted, true), LinearLayout.LayoutParams(0, -2, 1f))
+        graphHeader.addView(pill("LIVE • 5 SEC", cyan))
+        graphCard.addView(graphHeader)
+        graphCard.addView(label("RSRP • dBm", 11f, Color.WHITE, true).apply { setPadding(0, dp(5), 0, dp(3)) })
+        signalGraph = SignalGraphView()
+        graphCard.addView(signalGraph, LinearLayout.LayoutParams(-1, dp(142)))
+        graphCard.addView(label("Last 10 minutes • readings depend on Android cell-info updates", 9f, muted, false))
+        root.addView(graphCard)
+
+        root.addView(space(10))
+        val towerCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(15), dp(16), dp(15))
+            background = rounded(panel, 18)
+        }
+        towerCard.addView(label("CELL TOWER DETAILS", 10f, muted, true))
+        towerValue = label("Cell ID: —    PCI: —\nTAC: —    EARFCN: —", 12f, Color.WHITE, true).apply {
+            setPadding(0, dp(9), 0, 0)
+        }
+        towerCard.addView(towerValue)
+        towerCard.addView(label("Identifiers are shown only when Android makes them available.", 9f, muted, false).apply { setPadding(0, dp(6), 0, 0) })
+        root.addView(towerCard)
+
         updatedValue = label("Last update: Not started", 10f, muted, false).apply {
             setPadding(0, dp(8), 0, dp(7))
         }
@@ -287,7 +322,9 @@ class MainActivity : Activity() {
         root.addView(label("Band 7 alerts run in the background • Keep Location Services enabled.", 9f, muted, false).apply {
             setPadding(0, dp(7), 0, 0)
         })
-        return root
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        scroll.addView(root)
+        return scroll
     }
 
     private fun buildHistoryPage(): View {
@@ -418,6 +455,11 @@ class MainActivity : Activity() {
         stateValue.text = if (active) "● CONNECTED" else "● WAITING"
         stateValue.setTextColor(if (active) green else cyan)
         earfcnValue.text = if (earfcn >= 0) earfcn.toString() else "—"
+        val ci = prefs.getInt("tower_ci", Int.MAX_VALUE)
+        val pci = prefs.getInt("tower_pci", Int.MAX_VALUE)
+        val tac = prefs.getInt("tower_tac", Int.MAX_VALUE)
+        towerValue.text = "Cell ID: ${metric(ci)}    PCI: ${metric(pci)}\nTAC: ${metric(tac)}    EARFCN: ${if (earfcn >= 0) earfcn.toString() else "—"}"
+        if (::signalGraph.isInitialized) signalGraph.invalidate()
         rsrpValue.text = metric(rsrp); rsrqValue.text = metric(rsrq); sinrValue.text = metric(sinr)
         stateMetricValue.text = if (active) "LIVE" else "WAIT"
         updatedValue.text = "Last update: ${prefs.getString("updated", "Not started") ?: "Not started"}"
@@ -444,6 +486,74 @@ class MainActivity : Activity() {
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
         Toast.makeText(this, "LTE monitoring started", Toast.LENGTH_SHORT).show()
         stateValue.text = "● STARTING"
+    }
+
+    private inner class SignalGraphView : View(this@MainActivity) {
+        private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.rgb(47, 65, 91)
+            strokeWidth = dp(1).toFloat()
+            style = Paint.Style.STROKE
+        }
+        private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = cyan
+            strokeWidth = dp(2).toFloat()
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(32, 62, 220, 255)
+            style = Paint.Style.FILL
+        }
+        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = muted
+            textSize = sp(9f)
+            typeface = Typeface.DEFAULT
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val left = dp(34).toFloat()
+            val right = width - dp(7).toFloat()
+            val top = dp(12).toFloat()
+            val bottom = height - dp(20).toFloat()
+            if (right <= left || bottom <= top) return
+            for (i in 0..3) {
+                val y = top + (bottom - top) * i / 3f
+                canvas.drawLine(left, y, right, y, gridPaint)
+            }
+            val samples = try { JSONArray(prefs.getString("signal_samples", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
+            val values = mutableListOf<Int>()
+            for (i in 0 until samples.length()) {
+                val value = samples.optJSONObject(i)?.optInt("rsrp", Int.MAX_VALUE) ?: Int.MAX_VALUE
+                if (value != Int.MAX_VALUE && value != Int.MIN_VALUE) values.add(value)
+            }
+            if (values.isEmpty()) {
+                canvas.drawText("Waiting for signal readings…", left, (top + bottom) / 2f, textPaint)
+                return
+            }
+            val minValue = -125f
+            val maxValue = -65f
+            val path = Path()
+            val step = if (values.size > 1) (right - left) / (values.size - 1) else 0f
+            values.forEachIndexed { index, value ->
+                val clamped = value.toFloat().coerceIn(minValue, maxValue)
+                val y = bottom - ((clamped - minValue) / (maxValue - minValue)) * (bottom - top)
+                val x = left + step * index
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            val fill = Path(path).apply {
+                lineTo(left + step * (values.size - 1), bottom)
+                lineTo(left, bottom)
+                close()
+            }
+            canvas.drawPath(fill, fillPaint)
+            canvas.drawPath(path, linePaint)
+            canvas.drawText("-65", 0f, top + dp(3), textPaint)
+            canvas.drawText("-125", 0f, bottom, textPaint)
+            canvas.drawText("OLD", left, height.toFloat() - dp(3), textPaint)
+            canvas.drawText("NOW", right - dp(22), height.toFloat() - dp(3), textPaint)
+        }
     }
 
     private fun metricCard(title: String, initial: String, unit: String, accent: Int): LinearLayout {
@@ -502,6 +612,7 @@ class MainActivity : Activity() {
     private fun spaceHorizontal(width: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(width), 1) }
     private fun metricWeight() = LinearLayout.LayoutParams(0, dp(78), 1f)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
+    private fun sp(value: Float) = value * resources.displayMetrics.scaledDensity
     private fun metric(value: Int) = if (value == Int.MAX_VALUE) "—" else value.toString()
     private fun historyMetric(item: JSONObject, key: String): String {
         val value = item.optInt(key, Int.MAX_VALUE)
