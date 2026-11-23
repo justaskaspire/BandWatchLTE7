@@ -254,7 +254,7 @@ class MainActivity : Activity() {
         metrics.addView(spaceHorizontal(5))
         metrics.addView(metricCard("SINR", "—", "dB", green), metricWeight())
         metrics.addView(spaceHorizontal(5))
-        metrics.addView(metricCard("CELL ID", "—", "LTE", band3Blue), metricWeight())
+        metrics.addView(metricCard("CELL ID", "—", "", band3Blue), metricWeight())
         root.addView(metrics)
 
         root.addView(space(8))
@@ -430,7 +430,7 @@ class MainActivity : Activity() {
         val valueSize = if (title == "CELL ID") 12f else 16f
         val value = label(initial, valueSize, Color.WHITE, true).apply { setPadding(0, dp(5), 0, 0); includeFontPadding = false }
         card.addView(value)
-        card.addView(label(unit, 8f, accent, true).apply { setPadding(0, dp(2), 0, 0) })
+        if (unit.isNotBlank()) card.addView(label(unit, 8f, accent, true).apply { setPadding(0, dp(2), 0, 0) })
         when (title) {
             "RSRP" -> rsrpValue = value
             "RSRQ" -> rsrqValue = value
