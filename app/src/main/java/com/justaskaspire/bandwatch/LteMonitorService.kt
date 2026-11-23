@@ -47,6 +47,8 @@ class LteMonitorService : Service() {
     private var previousRxBytes: Long? = null
     private var previousTxBytes: Long? = null
     private var previousSpeedSampleAt = 0L
+    private var aboveSpeedThresholdSince = 0L
+    private var speedAlertPlayed = false
 
     private val poller = object : Runnable {
         override fun run() { requestNetworkReading(); handler.postDelayed(this, 5000) }
@@ -139,6 +141,7 @@ class LteMonitorService : Service() {
         val simLabel = prefs.getString("active_sim_label", "Active data SIM") ?: "Active data SIM"
         updateNotification("$simLabel • $band • RSRP ${metric(signal.rsrp)} dBm")
         if (band == "Band 7" && lastAlertedBand != "Band 7") sendBand7Alert()
+        if (band == "Band 3" && lastAlertedBand != "Band 3") SoundEffects.play(this, SoundEffects.Event.BAND3)
         lastAlertedBand = band
         if (band == "Band 3" || band == "Band 7") lastBand = band
     }
@@ -170,6 +173,16 @@ class LteMonitorService : Service() {
             (txBytes - oldTx).coerceAtLeast(0L), elapsed)
         previousRxBytes = rxBytes; previousTxBytes = txBytes; previousSpeedSampleAt = now
         setSpeedText(NetworkSpeed.format(bytesPerSecond), bytesPerSecond)
+        if (bytesPerSecond >= 90L * 1024L) {
+            if (aboveSpeedThresholdSince == 0L) aboveSpeedThresholdSince = now
+            if (!speedAlertPlayed && now - aboveSpeedThresholdSince >= 5000L) {
+                SoundEffects.play(this, SoundEffects.Event.SPEED)
+                speedAlertPlayed = true
+            }
+        } else {
+            aboveSpeedThresholdSince = 0L
+            speedAlertPlayed = false
+        }
     }
 
     private fun setSpeedText(value: String, bytesPerSecond: Long?) {
@@ -235,9 +248,9 @@ class LteMonitorService : Service() {
         if (Build.VERSION.SDK_INT >= 26) {
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(NotificationChannel("monitor", "LTE monitoring", NotificationManager.IMPORTANCE_LOW))
-            manager.createNotificationChannel(NotificationChannel("band7", "Band 7 alerts", NotificationManager.IMPORTANCE_HIGH).apply {
+            manager.createNotificationChannel(NotificationChannel("band7_sound_v2", "Band 7 alerts", NotificationManager.IMPORTANCE_HIGH).apply {
                 enableVibration(true)
-                setSound(android.provider.Settings.System.DEFAULT_NOTIFICATION_URI, null)
+                setSound(null, null)
             })
         }
     }
@@ -302,9 +315,10 @@ class LteMonitorService : Service() {
     private fun refreshOngoingNotification() { getSystemService(NotificationManager::class.java).notify(1, notification(latestBandMessage)) }
 
     private fun sendBand7Alert() {
+        SoundEffects.play(this, SoundEffects.Event.BAND7)
         val pending = PendingIntent.getActivity(this, 7, Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
-        val alert = Notification.Builder(this, "band7").setSmallIcon(R.drawable.ic_band7)
+        val alert = Notification.Builder(this, "band7_sound_v2").setSmallIcon(R.drawable.ic_band7)
             .setContentTitle("Band 7 detected!").setContentText("Your phone connected to LTE Band 7.")
             .setContentIntent(pending).setAutoCancel(true).build()
         getSystemService(NotificationManager::class.java).notify(7, alert)
