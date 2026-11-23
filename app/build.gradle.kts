@@ -15,9 +15,19 @@ android {
         versionName = "0.1.${System.getenv("GITHUB_RUN_NUMBER") ?: "0"}"
     }
 
+    signingConfigs {
+        create("bandwatchRelease") {
+            storeFile = file("$rootDir/bandwatch-release.jks")
+            storePassword = System.getenv("BANDWATCH_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("BANDWATCH_KEY_ALIAS")
+            keyPassword = System.getenv("BANDWATCH_KEY_PASSWORD")
+        }
+    }
+
     buildTypes {
         getByName("debug") {
-            // Use Android's standard debug signing for the current CI workflow.
+            // Sign every CI APK with one permanent key so updates install over prior builds.
+            signingConfig = signingConfigs.getByName("bandwatchRelease")
         }
     }
 
