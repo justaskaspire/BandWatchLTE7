@@ -38,6 +38,11 @@ class MainActivity : Activity() {
     private lateinit var rsrqValue: TextView
     private lateinit var sinrValue: TextView
     private lateinit var speedValue: TextView
+    private lateinit var downloadResultValue: TextView
+    private lateinit var uploadResultValue: TextView
+    private lateinit var speedTestStatus: TextView
+    private lateinit var speedTestButton: Button
+    @Volatile private var speedTestRunning = false
     private var selectedTab = 0
     private var previousRxBytes: Long? = null
     private var previousTxBytes: Long? = null
@@ -257,6 +262,41 @@ class MainActivity : Activity() {
         metrics.addView(metricCard("CELL ID", "—", "", band3Blue), metricWeight())
         root.addView(metrics)
 
+        root.addView(space(9))
+        val testCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(14), dp(12), dp(14), dp(12))
+            background = rounded(panel, 15)
+        }
+        testCard.addView(label("INTERNET SPEED TEST", 10f, muted, true))
+        val resultsRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(9), 0, dp(8))
+        }
+        val downloadColumn = column()
+        downloadColumn.addView(label("↓ DOWNLOAD", 9f, muted, true))
+        downloadResultValue = label("— Mbps", 20f, cyan, true).apply { setPadding(0, dp(3), 0, 0) }
+        downloadColumn.addView(downloadResultValue)
+        resultsRow.addView(downloadColumn, LinearLayout.LayoutParams(0, -2, 1f))
+        val uploadColumn = column()
+        uploadColumn.addView(label("↑ UPLOAD", 9f, muted, true))
+        uploadResultValue = label("— Mbps", 20f, green, true).apply { setPadding(0, dp(3), 0, 0) }
+        uploadColumn.addView(uploadResultValue)
+        resultsRow.addView(uploadColumn, LinearLayout.LayoutParams(0, -2, 1f))
+        testCard.addView(resultsRow)
+        val testActions = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        speedTestButton = actionButton("START TEST", blue) { startSpeedTest() }
+        testActions.addView(speedTestButton, LinearLayout.LayoutParams(0, dp(39), 1f))
+        testCard.addView(testActions)
+        speedTestStatus = label("Uses about 7 MB per test • Current internet connection", 9f, muted, false)
+        speedTestStatus.setPadding(0, dp(7), 0, 0)
+        testCard.addView(speedTestStatus)
+        root.addView(testCard)
+
         root.addView(space(8))
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         actions.addView(actionButton("START", blue) { requestAndStart() }, LinearLayout.LayoutParams(0, dp(40), 1.4f))
@@ -355,6 +395,49 @@ class MainActivity : Activity() {
         root.addView(infoCard("LTE monitoring",
             "Band 3 / Band 7 detection and Band 7 alerts run in the background. Keep Phone permission and Location Services enabled."))
         return root
+    }
+
+    private fun startSpeedTest() {
+        if (speedTestRunning) return
+        speedTestRunning = true
+        speedTestButton.isEnabled = false
+        speedTestButton.text = "TESTING…"
+        speedTestStatus.text = "Measuring download speed…"
+        Thread {
+            try {
+                val result = SpeedTestRunner.run { stage ->
+                    runOnUiThread {
+                        if (!isFinishing && ::speedTestStatus.isInitialized) {
+                            speedTestStatus.text = when (stage) {
+                                SpeedTestRunner.Stage.DOWNLOAD -> "Measuring download speed…"
+                                SpeedTestRunner.Stage.UPLOAD -> "Measuring upload speed…"
+                            }
+                        }
+                    }
+                }
+                runOnUiThread {
+                    if (!isFinishing && ::downloadResultValue.isInitialized) {
+                        downloadResultValue.text = String.format(Locale.US, "%.1f Mbps", result.downloadMbps)
+                        uploadResultValue.text = String.format(Locale.US, "%.1f Mbps", result.uploadMbps)
+                        speedTestStatus.text = "Test complete • Approx. 7 MB used"
+                    }
+                }
+            } catch (error: Exception) {
+                runOnUiThread {
+                    if (!isFinishing && ::speedTestStatus.isInitialized) {
+                        speedTestStatus.text = "Test failed: ${error.message ?: "Check your connection"}"
+                    }
+                }
+            } finally {
+                runOnUiThread {
+                    speedTestRunning = false
+                    if (!isFinishing && ::speedTestButton.isInitialized) {
+                        speedTestButton.isEnabled = true
+                        speedTestButton.text = "TEST AGAIN"
+                    }
+                }
+            }
+        }.start()
     }
 
     private fun refreshSpeed() {
