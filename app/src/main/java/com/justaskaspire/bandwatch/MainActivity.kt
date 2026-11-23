@@ -17,6 +17,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.SeekBar
 import android.widget.Switch
 import android.widget.TextView
 import android.widget.Toast
@@ -303,6 +304,7 @@ class MainActivity : Activity() {
         actions.addView(spaceHorizontal(8))
         actions.addView(actionButton("STOP", Color.rgb(35, 48, 70)) {
             stopService(Intent(this@MainActivity, LteMonitorService::class.java))
+            SoundEffects.play(this@MainActivity, SoundEffects.Event.STOP)
             Toast.makeText(this@MainActivity, "Monitoring stopped", Toast.LENGTH_SHORT).show()
         }, LinearLayout.LayoutParams(0, dp(40), 0.8f))
         root.addView(actions)
@@ -365,6 +367,7 @@ class MainActivity : Activity() {
         }
         root.addView(label("BANDWATCH", 12f, cyan, true))
         root.addView(label("Settings", 25f, Color.WHITE, true).apply { setPadding(0, dp(5), 0, dp(15)) })
+
         val speedCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(17), dp(16), dp(17), dp(16))
@@ -379,22 +382,79 @@ class MainActivity : Activity() {
             isChecked = prefs.getBoolean("speed_indicator_enabled", true)
             setOnCheckedChangeListener { _, enabled ->
                 prefs.edit().putBoolean("speed_indicator_enabled", enabled).apply()
-                previousRxBytes = null
-                previousTxBytes = null
-                previousSpeedSampleAt = 0L
-                // The running service reads this preference on its next poll.
-                // Do not start monitoring just because the display option changed.
+                previousRxBytes = null; previousTxBytes = null; previousSpeedSampleAt = 0L
             }
         })
         speedCard.addView(settingRow)
         root.addView(speedCard)
+
+        root.addView(space(10))
+        val soundCard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(17), dp(16), dp(17), dp(16))
+            background = rounded(panel, 18)
+        }
+        soundCard.addView(label("SOUND EFFECTS", 12f, cyan, true))
+        soundCard.addView(label("Modern tech alerts • Respects Silent Mode", 10f, muted, false).apply { setPadding(0, dp(4), 0, dp(12)) })
+        addSoundSwitch(soundCard, "Sound effects", "Enable or disable all BandWatch sounds.", "sound_master", true)
+        addSoundSwitch(soundCard, "Band 7 detected", "Radar pulse", "sound_band7", true, SoundEffects.Event.BAND7)
+        addSoundSwitch(soundCard, "Band 3 detected", "Low digital tone", "sound_band3", true, SoundEffects.Event.BAND3)
+        addSoundSwitch(soundCard, "Speed above 90 KB/s", "Success chime after 5 seconds", "sound_speed", true, SoundEffects.Event.SPEED)
+        addSoundSwitch(soundCard, "Monitoring started", "Power-up sound", "sound_start", true, SoundEffects.Event.START)
+        addSoundSwitch(soundCard, "Monitoring stopped", "Power-down sound", "sound_stop", true, SoundEffects.Event.STOP)
+        soundCard.addView(space(8))
+        soundCard.addView(label("VOLUME", 10f, muted, true))
+        val volumeLabel = label("${prefs.getInt("sound_volume", 70)}%", 11f, Color.WHITE, true)
+        soundCard.addView(volumeLabel.apply { setPadding(0, dp(5), 0, 0) })
+        soundCard.addView(SeekBar(this).apply {
+            max = 100
+            progress = prefs.getInt("sound_volume", 70)
+            setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
+                override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
+                    volumeLabel.text = "${progress}%"
+                    if (fromUser) prefs.edit().putInt("sound_volume", progress).apply()
+                }
+                override fun onStartTrackingTouch(seekBar: SeekBar?) {}
+                override fun onStopTrackingTouch(seekBar: SeekBar?) {}
+            })
+        })
+        root.addView(soundCard)
         root.addView(space(10))
         root.addView(infoCard("About the speed reading",
             "BandWatch combines mobile download (RX) and upload (TX) traffic. It refreshes about once per second and does not include Wi-Fi traffic."))
         root.addView(space(10))
         root.addView(infoCard("LTE monitoring",
             "Band 3 / Band 7 detection and Band 7 alerts run in the background. Keep Phone permission and Location Services enabled."))
-        return root
+        val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
+        scroll.addView(root)
+        return scroll
+    }
+
+    private fun addSoundSwitch(
+        parent: LinearLayout, title: String, subtitle: String, key: String,
+        defaultValue: Boolean, previewEvent: SoundEffects.Event? = null
+    ) {
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(7), 0, dp(7))
+        }
+        val texts = column()
+        texts.addView(label(title, 12f, Color.WHITE, true))
+        texts.addView(label(subtitle, 9f, muted, false).apply { setPadding(0, dp(2), 0, 0) })
+        row.addView(texts, LinearLayout.LayoutParams(0, -2, 1f))
+        if (previewEvent != null) {
+            row.addView(Button(this).apply {
+                text = "Preview"; isAllCaps = false; textSize = 9f
+                setTextColor(cyan); background = rounded(Color.rgb(25, 42, 65), 10)
+                setOnClickListener { SoundEffects.play(this@MainActivity, previewEvent, true) }
+            }, LinearLayout.LayoutParams(dp(76), dp(34)))
+        }
+        row.addView(Switch(this).apply {
+            isChecked = prefs.getBoolean(key, defaultValue)
+            setOnCheckedChangeListener { _, enabled -> prefs.edit().putBoolean(key, enabled).apply() }
+        })
+        parent.addView(row)
     }
 
     private fun startSpeedTest() {
@@ -498,6 +558,7 @@ class MainActivity : Activity() {
     }
 
     private fun startMonitor() {
+        SoundEffects.play(this, SoundEffects.Event.START)
         val intent = Intent(this, LteMonitorService::class.java)
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
         Toast.makeText(this, "LTE monitoring started", Toast.LENGTH_SHORT).show()
