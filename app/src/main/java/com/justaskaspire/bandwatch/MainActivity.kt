@@ -32,6 +32,7 @@ class MainActivity : Activity() {
     private lateinit var navItems: List<LinearLayout>
     private lateinit var bandValue: TextView
     private lateinit var bandCaption: TextView
+    private lateinit var simValue: TextView
     private lateinit var earfcnValue: TextView
     private lateinit var rsrpValue: TextView
     private lateinit var rsrqValue: TextView
@@ -231,6 +232,8 @@ class MainActivity : Activity() {
         hero.addView(bandValue)
         bandCaption = label("Start monitoring to detect your LTE band", 11f, muted, false)
         hero.addView(bandCaption)
+        simValue = label("Mobile data SIM: detecting…", 11f, cyan, true).apply { setPadding(0, dp(6), 0, 0) }
+        hero.addView(simValue)
         val earfcnRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
@@ -411,6 +414,7 @@ class MainActivity : Activity() {
             "Band 7" -> "LTE 2600 MHz • detected from EARFCN"
             else -> band
         }
+        simValue.text = "Mobile data: ${prefs.getString("active_sim_label", "Not identified") ?: "Not identified"}"
         stateValue.text = if (active) "● CONNECTED" else "● WAITING"
         stateValue.setTextColor(if (active) green else cyan)
         earfcnValue.text = if (earfcn >= 0) earfcn.toString() else "—"
