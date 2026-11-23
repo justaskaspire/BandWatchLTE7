@@ -35,6 +35,7 @@ class LteMonitorService : Service() {
     private lateinit var telephony: TelephonyManager
     private val prefs by lazy { getSharedPreferences("bandwatch", MODE_PRIVATE) }
     private var lastBand: String? = null
+    private var lastAlertedBand: String? = null
     private var currentBand: String? = null
     private var latestBandMessage = "Starting LTE monitor…"
     private var latestSpeedText = "0 KB/s"
@@ -100,7 +101,8 @@ class LteMonitorService : Service() {
         save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
         if (band == "Band 3" || band == "Band 7") recordBandChange(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
         updateNotification("${band} • RSRP ${metric(signal.rsrp)} dBm")
-        if (band == "Band 7" && lastBand != "Band 7") sendBand7Alert()
+        if (band == "Band 7" && lastAlertedBand != "Band 7") sendBand7Alert()
+        lastAlertedBand = band
         if (band == "Band 3" || band == "Band 7") lastBand = band
     }
 
@@ -166,6 +168,7 @@ class LteMonitorService : Service() {
 
     private fun showUnavailable(reason: String) {
         currentBand = null
+        lastAlertedBand = null
         save(reason, -1, Int.MAX_VALUE, Int.MAX_VALUE, Int.MAX_VALUE)
         updateNotification(reason)
     }
@@ -214,24 +217,28 @@ class LteMonitorService : Service() {
             val numberPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
                 typeface = Typeface.create("sans-serif-condensed", Typeface.BOLD)
-                textAlign = Paint.Align.CENTER
-                // Keep the full glyph height. Fit three-digit readings horizontally only.
-                textSize = 50f
+                textAlign = Paint.Align.LEFT
+                // Larger digits; compress horizontally only when the reading needs it.
+                textSize = 54f
             }
-            val maxWidth = 51f
-            val measuredMax = numberPaint.measureText("888")
-            val horizontalScale = (maxWidth / measuredMax).coerceAtMost(1f)
+            val measuredWidth = numberPaint.measureText(number)
+            val maxWidth = if (currentBand == "Band 7") 52f else 61f
+            val horizontalScale = (maxWidth / measuredWidth).coerceAtMost(1f)
+            val renderedWidth = measuredWidth * horizontalScale
+            val hasBand7Dot = currentBand == "Band 7"
+            val groupWidth = renderedWidth + if (hasBand7Dot) 9f else 0f
+            val textLeft = (64f - groupWidth) / 2f
             canvas.save()
-            canvas.scale(horizontalScale, 1f, 25f, 49f)
-            canvas.drawText(number, 25f, 49f, numberPaint)
+            canvas.scale(horizontalScale, 1f, textLeft, 49f)
+            canvas.drawText(number, textLeft, 49f, numberPaint)
             canvas.restore()
-            // A small dot appears only while connected to LTE Band 7.
-            if (currentBand == "Band 7") {
+            // Keep the Band 7 dot immediately beside the live speed digits.
+            if (hasBand7Dot) {
                 val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                     color = Color.WHITE
                     style = Paint.Style.FILL
                 }
-                canvas.drawCircle(58f, 42f, 3.5f, dotPaint)
+                canvas.drawCircle(textLeft + renderedWidth + 5.5f, 42f, 3.5f, dotPaint)
             }
             return Icon.createWithBitmap(bitmap)
         }
