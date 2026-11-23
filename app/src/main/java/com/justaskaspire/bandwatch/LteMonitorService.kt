@@ -128,6 +128,13 @@ class LteMonitorService : Service() {
         val band = LteBand.fromEarfcn(earfcn)
         currentBand = band
         save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
+        val identity = serving.cellIdentity
+        prefs.edit()
+            .putInt("tower_ci", identity.ci)
+            .putInt("tower_pci", identity.pci)
+            .putInt("tower_tac", identity.tac)
+            .apply()
+        recordSignalSample(signal.rsrp, signal.rsrq, signal.rssnr)
         if (band == "Band 3" || band == "Band 7") recordBandChange(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
         val simLabel = prefs.getString("active_sim_label", "Active data SIM") ?: "Active data SIM"
         updateNotification("$simLabel • $band • RSRP ${metric(signal.rsrp)} dBm")
@@ -194,6 +201,21 @@ class LteMonitorService : Service() {
         val first = (history.length() - 300).coerceAtLeast(0)
         for (i in first until history.length()) trimmed.put(history.getJSONObject(i))
         prefs.edit().putString("history_json", trimmed.toString()).putString("history_last_band", band).apply()
+    }
+
+    private fun recordSignalSample(rsrp: Int, rsrq: Int, sinr: Int) {
+        if (rsrp == Int.MAX_VALUE || rsrp == Int.MIN_VALUE) return
+        val samples = try { JSONArray(prefs.getString("signal_samples", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
+        samples.put(JSONObject().apply {
+            put("time", System.currentTimeMillis())
+            put("rsrp", rsrp)
+            put("rsrq", rsrq)
+            put("sinr", sinr)
+        })
+        val trimmed = JSONArray()
+        val first = (samples.length() - 120).coerceAtLeast(0)
+        for (i in first until samples.length()) trimmed.put(samples.getJSONObject(i))
+        prefs.edit().putString("signal_samples", trimmed.toString()).apply()
     }
 
     private fun showUnavailable(reason: String) {
