@@ -420,7 +420,7 @@ class MainActivity : Activity() {
         val accent = if (band == "Band 7") band7Green else band3Blue
         bandValue.text = when (band) { "Band 3" -> "B3"; "Band 7" -> "B7"; else -> "—" }
         bandValue.setTextColor(accent)
-        simValue.text = "Mobile data: ${prefs.getString("active_sim_label", "Not identified") ?: "Not identified"}"
+        simValue.text = prefs.getString("active_sim_label", "SIM not identified") ?: "SIM not identified"
         earfcnValue.text = if (earfcn >= 0) earfcn.toString() else "—"
         val ci = prefs.getInt("tower_ci", Int.MAX_VALUE)
         val pci = prefs.getInt("tower_pci", Int.MAX_VALUE)
