@@ -34,7 +34,6 @@ class MainActivity : Activity() {
     private lateinit var pageHost: FrameLayout
     private lateinit var navItems: List<LinearLayout>
     private lateinit var bandValue: TextView
-    private lateinit var bandCaption: TextView
     private lateinit var simValue: TextView
     private lateinit var towerValue: TextView
     private lateinit var signalGraph: SignalGraphView
@@ -42,10 +41,7 @@ class MainActivity : Activity() {
     private lateinit var rsrpValue: TextView
     private lateinit var rsrqValue: TextView
     private lateinit var sinrValue: TextView
-    private lateinit var updatedValue: TextView
-    private lateinit var stateValue: TextView
     private lateinit var speedValue: TextView
-    private lateinit var stateMetricValue: TextView
     private var selectedTab = 0
     private var previousRxBytes: Long? = null
     private var previousTxBytes: Long? = null
@@ -205,123 +201,101 @@ class MainActivity : Activity() {
     private fun buildDashboardPage(): View {
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(13), dp(18), dp(8))
+            setPadding(dp(16), dp(9), dp(16), dp(6))
             setBackgroundColor(bg)
         }
         val top = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val brand = column()
-        brand.addView(label("BANDWATCH", 13f, cyan, true))
-        brand.addView(label("LTE NETWORK MONITOR", 10f, muted, false).apply { setPadding(0, dp(2), 0, 0) })
-        top.addView(brand, LinearLayout.LayoutParams(0, -2, 1f))
-        top.addView(pill("LIVE MONITOR", green))
+        top.addView(label("BANDWATCH", 13f, cyan, true), LinearLayout.LayoutParams(0, -2, 1f))
+        simValue = label("SIM: detecting…", 10f, muted, true)
+        top.addView(simValue)
         root.addView(top)
-        root.addView(label("Network overview", 22f, Color.WHITE, true).apply { setPadding(0, dp(12), 0, dp(10)) })
 
         val hero = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(13), dp(18), dp(13))
-            background = rounded(panel, 20, Color.rgb(34, 64, 105), 1)
-        }
-        val heroTop = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(15), dp(9), dp(15), dp(9))
+            background = rounded(panel, 17, Color.rgb(34, 64, 105), 1)
         }
-        heroTop.addView(label("CONNECTED BAND", 10f, muted, true), LinearLayout.LayoutParams(0, -2, 1f))
-        stateValue = label("● WAITING", 10f, cyan, true)
-        heroTop.addView(stateValue)
-        hero.addView(heroTop)
-        bandValue = label("—", 44f, Color.WHITE, true).apply { setPadding(0, dp(1), 0, 0) }
-        hero.addView(bandValue)
-        bandCaption = label("Start monitoring to detect your LTE band", 11f, muted, false)
-        hero.addView(bandCaption)
-        simValue = label("Mobile data SIM: detecting…", 11f, cyan, true).apply { setPadding(0, dp(6), 0, 0) }
-        hero.addView(simValue)
-        val earfcnRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, dp(8), 0, 0)
+        val bandColumn = column()
+        bandColumn.addView(label("LTE BAND", 9f, muted, true))
+        bandValue = label("—", 37f, Color.WHITE, true).apply {
+            includeFontPadding = false
         }
-        earfcnRow.addView(label("EARFCN", 10f, muted, true), LinearLayout.LayoutParams(0, -2, 1f))
-        earfcnValue = label("—", 13f, Color.WHITE, true)
-        earfcnRow.addView(earfcnValue)
-        hero.addView(earfcnRow)
+        bandColumn.addView(bandValue)
+        hero.addView(bandColumn, LinearLayout.LayoutParams(0, -2, 1f))
+        val earfcnColumn = column().apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        earfcnColumn.addView(label("EARFCN", 9f, muted, true).apply { gravity = Gravity.END })
+        earfcnValue = label("—", 15f, Color.WHITE, true).apply { gravity = Gravity.END; setPadding(0, dp(3), 0, 0) }
+        earfcnColumn.addView(earfcnValue)
+        hero.addView(earfcnColumn)
         root.addView(hero)
 
-        root.addView(space(9))
+        root.addView(space(7))
         val speedCard = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(16), dp(11), dp(16), dp(11))
-            background = rounded(panel, 16)
+            setPadding(dp(14), dp(8), dp(14), dp(8))
+            background = rounded(panel, 14)
         }
         val speedLabels = column()
-        speedLabels.addView(label("LIVE NETWORK SPEED", 9f, muted, true))
-        speedValue = label("0 KB/s | —", 21f, cyan, true).apply { setPadding(0, dp(3), 0, 0) }
+        speedLabels.addView(label("NETWORK SPEED", 9f, muted, true))
+        speedValue = label("0 KB/s", 20f, cyan, true).apply {
+            setPadding(0, dp(1), 0, 0)
+            includeFontPadding = false
+        }
         speedLabels.addView(speedValue)
-        speedCard.addView(speedLabels, LinearLayout.LayoutParams(0, -2, 1f))
-        speedCard.addView(pill("RX + TX", cyan))
+        speedCard.addView(speedLabels)
         root.addView(speedCard)
 
-        root.addView(label("SIGNAL METRICS", 10f, muted, true).apply { setPadding(0, dp(11), 0, dp(6)) })
+        root.addView(label("SIGNAL", 9f, muted, true).apply { setPadding(0, dp(8), 0, dp(4)) })
         val metrics = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         metrics.addView(metricCard("RSRP", "—", "dBm", blue), metricWeight())
         metrics.addView(spaceHorizontal(7))
         metrics.addView(metricCard("RSRQ", "—", "dB", cyan), metricWeight())
         metrics.addView(spaceHorizontal(7))
         metrics.addView(metricCard("SINR", "—", "dB", green), metricWeight())
-        metrics.addView(spaceHorizontal(7))
-        metrics.addView(metricCard("STATUS", "—", "LTE", Color.rgb(184, 145, 255)), metricWeight())
         root.addView(metrics)
 
-        root.addView(space(12))
+        root.addView(space(7))
         val graphCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(15), dp(16), dp(13))
-            background = rounded(panel, 18, Color.rgb(37, 67, 105), 1)
+            setPadding(dp(13), dp(10), dp(13), dp(8))
+            background = rounded(panel, 16, Color.rgb(37, 67, 105), 1)
         }
         val graphHeader = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        graphHeader.addView(label("SIGNAL HISTORY", 10f, muted, true), LinearLayout.LayoutParams(0, -2, 1f))
-        graphHeader.addView(pill("LIVE • 5 SEC", cyan))
+        graphHeader.addView(label("SIGNAL HISTORY", 9f, muted, true), LinearLayout.LayoutParams(0, -2, 1f))
+        graphHeader.addView(label("10 MIN", 9f, cyan, true))
         graphCard.addView(graphHeader)
-        graphCard.addView(label("RSRP • dBm", 11f, Color.WHITE, true).apply { setPadding(0, dp(5), 0, dp(3)) })
         signalGraph = SignalGraphView()
-        graphCard.addView(signalGraph, LinearLayout.LayoutParams(-1, dp(142)))
-        graphCard.addView(label("Last 10 minutes • readings depend on Android cell-info updates", 9f, muted, false))
+        graphCard.addView(signalGraph, LinearLayout.LayoutParams(-1, dp(105)))
         root.addView(graphCard)
 
-        root.addView(space(10))
+        root.addView(space(7))
         val towerCard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(15), dp(16), dp(15))
-            background = rounded(panel, 18)
+            setPadding(dp(13), dp(9), dp(13), dp(9))
+            background = rounded(panel, 15)
         }
-        towerCard.addView(label("CELL TOWER DETAILS", 10f, muted, true))
-        towerValue = label("Cell ID: —    PCI: —\nTAC: —    EARFCN: —", 12f, Color.WHITE, true).apply {
-            setPadding(0, dp(9), 0, 0)
+        towerCard.addView(label("CELL TOWER", 9f, muted, true))
+        towerValue = label("Cell ID: —   PCI: —   TAC: —", 11f, Color.WHITE, true).apply {
+            setPadding(0, dp(6), 0, 0)
         }
         towerCard.addView(towerValue)
-        towerCard.addView(label("Identifiers are shown only when Android makes them available.", 9f, muted, false).apply { setPadding(0, dp(6), 0, 0) })
         root.addView(towerCard)
 
-        updatedValue = label("Last update: Not started", 10f, muted, false).apply {
-            setPadding(0, dp(8), 0, dp(7))
-        }
-        root.addView(updatedValue)
+        root.addView(space(8))
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        actions.addView(actionButton("START MONITORING", blue) { requestAndStart() }, LinearLayout.LayoutParams(0, dp(45), 1.4f))
+        actions.addView(actionButton("START", blue) { requestAndStart() }, LinearLayout.LayoutParams(0, dp(40), 1.4f))
         actions.addView(spaceHorizontal(8))
         actions.addView(actionButton("STOP", Color.rgb(35, 48, 70)) {
             stopService(Intent(this@MainActivity, LteMonitorService::class.java))
             Toast.makeText(this@MainActivity, "Monitoring stopped", Toast.LENGTH_SHORT).show()
-            stateValue.text = "● STOPPED"
-        }, LinearLayout.LayoutParams(0, dp(45), 0.8f))
+        }, LinearLayout.LayoutParams(0, dp(40), 0.8f))
         root.addView(actions)
-        root.addView(label("Band 7 alerts run in the background • Keep Location Services enabled.", 9f, muted, false).apply {
-            setPadding(0, dp(7), 0, 0)
-        })
+
         val scroll = ScrollView(this).apply { setBackgroundColor(bg); isFillViewport = true }
         scroll.addView(root)
         return scroll
@@ -446,23 +420,14 @@ class MainActivity : Activity() {
         val accent = if (band == "Band 7") band7Green else band3Blue
         bandValue.text = when (band) { "Band 3" -> "B3"; "Band 7" -> "B7"; else -> "—" }
         bandValue.setTextColor(accent)
-        bandCaption.text = when (band) {
-            "Band 3" -> "LTE 1800 MHz • detected from EARFCN"
-            "Band 7" -> "LTE 2600 MHz • detected from EARFCN"
-            else -> band
-        }
         simValue.text = "Mobile data: ${prefs.getString("active_sim_label", "Not identified") ?: "Not identified"}"
-        stateValue.text = if (active) "● CONNECTED" else "● WAITING"
-        stateValue.setTextColor(if (active) green else cyan)
         earfcnValue.text = if (earfcn >= 0) earfcn.toString() else "—"
         val ci = prefs.getInt("tower_ci", Int.MAX_VALUE)
         val pci = prefs.getInt("tower_pci", Int.MAX_VALUE)
         val tac = prefs.getInt("tower_tac", Int.MAX_VALUE)
-        towerValue.text = "Cell ID: ${metric(ci)}    PCI: ${metric(pci)}\nTAC: ${metric(tac)}    EARFCN: ${if (earfcn >= 0) earfcn.toString() else "—"}"
+        towerValue.text = "Cell ID: ${metric(ci)}   PCI: ${metric(pci)}   TAC: ${metric(tac)}"
         if (::signalGraph.isInitialized) signalGraph.invalidate()
         rsrpValue.text = metric(rsrp); rsrqValue.text = metric(rsrq); sinrValue.text = metric(sinr)
-        stateMetricValue.text = if (active) "LIVE" else "WAIT"
-        updatedValue.text = "Last update: ${prefs.getString("updated", "Not started") ?: "Not started"}"
     }
 
     private fun requestAndStart() {
@@ -485,7 +450,6 @@ class MainActivity : Activity() {
         val intent = Intent(this, LteMonitorService::class.java)
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
         Toast.makeText(this, "LTE monitoring started", Toast.LENGTH_SHORT).show()
-        stateValue.text = "● STARTING"
     }
 
     private inner class SignalGraphView : View(this@MainActivity) {
@@ -570,7 +534,6 @@ class MainActivity : Activity() {
             "RSRP" -> rsrpValue = value
             "RSRQ" -> rsrqValue = value
             "SINR" -> sinrValue = value
-            "STATUS" -> stateMetricValue = value
         }
         return card
     }
@@ -610,7 +573,7 @@ class MainActivity : Activity() {
         }
     private fun space(height: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(height)) }
     private fun spaceHorizontal(width: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(width), 1) }
-    private fun metricWeight() = LinearLayout.LayoutParams(0, dp(78), 1f)
+    private fun metricWeight() = LinearLayout.LayoutParams(0, dp(66), 1f)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun sp(value: Float) = value * resources.displayMetrics.scaledDensity
     private fun metric(value: Int) = if (value == Int.MAX_VALUE) "—" else value.toString()
