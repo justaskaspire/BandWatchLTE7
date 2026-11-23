@@ -22,6 +22,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.telephony.CellInfo
 import android.telephony.CellInfoLte
+import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import com.justaskaspire.bandwatch.R
 import org.json.JSONArray
@@ -33,6 +34,8 @@ import java.util.Locale
 class LteMonitorService : Service() {
     private val handler = Handler(Looper.getMainLooper())
     private lateinit var telephony: TelephonyManager
+    private lateinit var subscriptionManager: SubscriptionManager
+    private var activeDataSubId: Int = SubscriptionManager.INVALID_SUBSCRIPTION_ID
     private val prefs by lazy { getSharedPreferences("bandwatch", MODE_PRIVATE) }
     private var lastBand: String? = null
     private var lastAlertedBand: String? = null
@@ -55,6 +58,7 @@ class LteMonitorService : Service() {
     override fun onCreate() {
         super.onCreate()
         telephony = getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+        subscriptionManager = getSystemService(Context.TELEPHONY_SUBSCRIPTION_SERVICE) as SubscriptionManager
         lastBand = prefs.getString("history_last_band", null)
         currentBand = prefs.getString("band", null)?.takeIf { it == "Band 3" || it == "Band 7" }
         speedWasEnabled = prefs.getBoolean("speed_indicator_enabled", true)
@@ -71,12 +75,37 @@ class LteMonitorService : Service() {
     @Suppress("DEPRECATION")
     private fun requestNetworkReading() {
         try {
+            val selectedSubId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                SubscriptionManager.getActiveDataSubscriptionId()
+            } else {
+                SubscriptionManager.getDefaultDataSubscriptionId()
+            }
+            if (selectedSubId == SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                showUnavailable("Android has not selected an active mobile-data SIM")
+                return
+            }
+            activeDataSubId = selectedSubId
+            val info = subscriptionManager.activeSubscriptionInfoList
+                ?.firstOrNull { it.subscriptionId == selectedSubId }
+            val slot = info?.simSlotIndex?.let { "SIM ${it + 1}" } ?: "SIM"
+            val carrier = info?.carrierName?.toString()?.takeIf { it.isNotBlank() }
+            val simLabel = if (carrier != null) "$slot • $carrier" else "$slot • Mobile data"
+            prefs.edit().putString("active_sim_label", simLabel)
+                .putInt("active_data_sub_id", selectedSubId).apply()
+
+            val dataTelephony = telephony.createForSubscriptionId(selectedSubId)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                telephony.requestCellInfoUpdate(mainExecutor, object : TelephonyManager.CellInfoCallback() {
-                    override fun onCellInfo(cellInfo: MutableList<CellInfo>) { processCellInfo(cellInfo) }
-                    override fun onError(errorCode: Int, detail: Throwable?) { showUnavailable("Android cell-info request failed (${errorCode})") }
+                dataTelephony.requestCellInfoUpdate(mainExecutor, object : TelephonyManager.CellInfoCallback() {
+                    override fun onCellInfo(cellInfo: MutableList<CellInfo>) {
+                        if (activeDataSubId == selectedSubId) processCellInfo(cellInfo)
+                    }
+                    override fun onError(errorCode: Int, detail: Throwable?) {
+                        if (activeDataSubId == selectedSubId) showUnavailable("SIM cell-info request failed ($errorCode)")
+                    }
                 })
-            } else processCellInfo(telephony.allCellInfo)
+            } else if (activeDataSubId == selectedSubId) {
+                processCellInfo(dataTelephony.allCellInfo)
+            }
         } catch (_: SecurityException) {
             showUnavailable("Permission missing — check Phone and Precise Location access")
         } catch (_: Exception) {
@@ -100,7 +129,8 @@ class LteMonitorService : Service() {
         currentBand = band
         save(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
         if (band == "Band 3" || band == "Band 7") recordBandChange(band, earfcn, signal.rsrp, signal.rsrq, signal.rssnr)
-        updateNotification("${band} • RSRP ${metric(signal.rsrp)} dBm")
+        val simLabel = prefs.getString("active_sim_label", "Active data SIM") ?: "Active data SIM"
+        updateNotification("$simLabel • $band • RSRP ${metric(signal.rsrp)} dBm")
         if (band == "Band 7" && lastAlertedBand != "Band 7") sendBand7Alert()
         lastAlertedBand = band
         if (band == "Band 3" || band == "Band 7") lastBand = band
