@@ -4,10 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Canvas
 import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.net.TrafficStats
@@ -35,8 +32,7 @@ class MainActivity : Activity() {
     private lateinit var navItems: List<LinearLayout>
     private lateinit var bandValue: TextView
     private lateinit var simValue: TextView
-    private lateinit var towerValue: TextView
-    private lateinit var signalGraph: SignalGraphView
+    private lateinit var cellIdValue: TextView
     private lateinit var earfcnValue: TextView
     private lateinit var rsrpValue: TextView
     private lateinit var rsrqValue: TextView
@@ -253,38 +249,13 @@ class MainActivity : Activity() {
         root.addView(label("SIGNAL", 9f, muted, true).apply { setPadding(0, dp(8), 0, dp(4)) })
         val metrics = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
         metrics.addView(metricCard("RSRP", "—", "dBm", blue), metricWeight())
-        metrics.addView(spaceHorizontal(7))
+        metrics.addView(spaceHorizontal(5))
         metrics.addView(metricCard("RSRQ", "—", "dB", cyan), metricWeight())
-        metrics.addView(spaceHorizontal(7))
+        metrics.addView(spaceHorizontal(5))
         metrics.addView(metricCard("SINR", "—", "dB", green), metricWeight())
+        metrics.addView(spaceHorizontal(5))
+        metrics.addView(metricCard("CELL ID", "—", "LTE", band3Blue), metricWeight())
         root.addView(metrics)
-
-        root.addView(space(7))
-        val graphCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(13), dp(10), dp(13), dp(8))
-            background = rounded(panel, 16, Color.rgb(37, 67, 105), 1)
-        }
-        val graphHeader = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
-        graphHeader.addView(label("SIGNAL HISTORY", 9f, muted, true), LinearLayout.LayoutParams(0, -2, 1f))
-        graphHeader.addView(label("10 MIN", 9f, cyan, true))
-        graphCard.addView(graphHeader)
-        signalGraph = SignalGraphView()
-        graphCard.addView(signalGraph, LinearLayout.LayoutParams(-1, dp(105)))
-        root.addView(graphCard)
-
-        root.addView(space(7))
-        val towerCard = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(13), dp(9), dp(13), dp(9))
-            background = rounded(panel, 15)
-        }
-        towerCard.addView(label("CELL TOWER", 9f, muted, true))
-        towerValue = label("Cell ID: —   PCI: —   TAC: —", 11f, Color.WHITE, true).apply {
-            setPadding(0, dp(6), 0, 0)
-        }
-        towerCard.addView(towerValue)
-        root.addView(towerCard)
 
         root.addView(space(8))
         val actions = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
@@ -423,10 +394,7 @@ class MainActivity : Activity() {
         simValue.text = prefs.getString("active_sim_label", "SIM not identified") ?: "SIM not identified"
         earfcnValue.text = if (earfcn >= 0) earfcn.toString() else "—"
         val ci = prefs.getInt("tower_ci", Int.MAX_VALUE)
-        val pci = prefs.getInt("tower_pci", Int.MAX_VALUE)
-        val tac = prefs.getInt("tower_tac", Int.MAX_VALUE)
-        towerValue.text = "Cell ID: ${metric(ci)}   PCI: ${metric(pci)}   TAC: ${metric(tac)}"
-        if (::signalGraph.isInitialized) signalGraph.invalidate()
+        cellIdValue.text = metric(ci)
         rsrpValue.text = metric(rsrp); rsrqValue.text = metric(rsrq); sinrValue.text = metric(sinr)
     }
 
@@ -452,74 +420,6 @@ class MainActivity : Activity() {
         Toast.makeText(this, "LTE monitoring started", Toast.LENGTH_SHORT).show()
     }
 
-    private inner class SignalGraphView : View(this@MainActivity) {
-        private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(47, 65, 91)
-            strokeWidth = dp(1).toFloat()
-            style = Paint.Style.STROKE
-        }
-        private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = cyan
-            strokeWidth = dp(2).toFloat()
-            style = Paint.Style.STROKE
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
-        private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(32, 62, 220, 255)
-            style = Paint.Style.FILL
-        }
-        private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = muted
-            textSize = sp(9f)
-            typeface = Typeface.DEFAULT
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            val left = dp(34).toFloat()
-            val right = width - dp(7).toFloat()
-            val top = dp(12).toFloat()
-            val bottom = height - dp(20).toFloat()
-            if (right <= left || bottom <= top) return
-            for (i in 0..3) {
-                val y = top + (bottom - top) * i / 3f
-                canvas.drawLine(left, y, right, y, gridPaint)
-            }
-            val samples = try { JSONArray(prefs.getString("signal_samples", "[]") ?: "[]") } catch (_: Exception) { JSONArray() }
-            val values = mutableListOf<Int>()
-            for (i in 0 until samples.length()) {
-                val value = samples.optJSONObject(i)?.optInt("rsrp", Int.MAX_VALUE) ?: Int.MAX_VALUE
-                if (value != Int.MAX_VALUE && value != Int.MIN_VALUE) values.add(value)
-            }
-            if (values.isEmpty()) {
-                canvas.drawText("Waiting for signal readings…", left, (top + bottom) / 2f, textPaint)
-                return
-            }
-            val minValue = -125f
-            val maxValue = -65f
-            val path = Path()
-            val step = if (values.size > 1) (right - left) / (values.size - 1) else 0f
-            values.forEachIndexed { index, value ->
-                val clamped = value.toFloat().coerceIn(minValue, maxValue)
-                val y = bottom - ((clamped - minValue) / (maxValue - minValue)) * (bottom - top)
-                val x = left + step * index
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-            }
-            val fill = Path(path).apply {
-                lineTo(left + step * (values.size - 1), bottom)
-                lineTo(left, bottom)
-                close()
-            }
-            canvas.drawPath(fill, fillPaint)
-            canvas.drawPath(path, linePaint)
-            canvas.drawText("-65", 0f, top + dp(3), textPaint)
-            canvas.drawText("-125", 0f, bottom, textPaint)
-            canvas.drawText("OLD", left, height.toFloat() - dp(3), textPaint)
-            canvas.drawText("NOW", right - dp(22), height.toFloat() - dp(3), textPaint)
-        }
-    }
-
     private fun metricCard(title: String, initial: String, unit: String, accent: Int): LinearLayout {
         val card = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -527,13 +427,15 @@ class MainActivity : Activity() {
             background = rounded(panel, 15)
         }
         card.addView(label(title, 9f, muted, true))
-        val value = label(initial, 20f, Color.WHITE, true).apply { setPadding(0, dp(5), 0, 0) }
+        val valueSize = if (title == "CELL ID") 12f else 16f
+        val value = label(initial, valueSize, Color.WHITE, true).apply { setPadding(0, dp(5), 0, 0); includeFontPadding = false }
         card.addView(value)
-        card.addView(label(unit, 9f, accent, true).apply { setPadding(0, dp(1), 0, 0) })
+        card.addView(label(unit, 8f, accent, true).apply { setPadding(0, dp(2), 0, 0) })
         when (title) {
             "RSRP" -> rsrpValue = value
             "RSRQ" -> rsrqValue = value
             "SINR" -> sinrValue = value
+            "CELL ID" -> cellIdValue = value
         }
         return card
     }
@@ -573,7 +475,7 @@ class MainActivity : Activity() {
         }
     private fun space(height: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(1, dp(height)) }
     private fun spaceHorizontal(width: Int) = View(this).apply { layoutParams = LinearLayout.LayoutParams(dp(width), 1) }
-    private fun metricWeight() = LinearLayout.LayoutParams(0, dp(66), 1f)
+    private fun metricWeight() = LinearLayout.LayoutParams(0, dp(62), 1f)
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
     private fun sp(value: Float) = value * resources.displayMetrics.scaledDensity
     private fun metric(value: Int) = if (value == Int.MAX_VALUE) "—" else value.toString()
