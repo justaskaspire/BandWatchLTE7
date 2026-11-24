@@ -2,15 +2,16 @@ package com.justaskaspire.bandwatch
 
 import android.app.Activity
 import android.app.AppOpsManager
-import android.app.usage.UsageEvents
-import android.app.usage.UsageStatsManager
+import android.app.usage.NetworkStats
+import android.app.usage.NetworkStatsManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
-import android.net.TrafficStats
-import android.os.Build
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -21,26 +22,33 @@ import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import kotlin.math.max
 
 /**
- * Small notification-launched view. Android does not expose live per-UID
- * traffic to ordinary apps, so this pairs a foreground-app signal with
- * device-wide mobile traffic movement. It is explicitly presented as an
- * approximation rather than claiming packet-level app attribution.
+ * Best-available per-app traffic view using Android's NetworkStatsManager.
+ * Android records usage in accounting buckets, so refresh speed and precision
+ * depend on the device's system stats updates; this is not packet capture.
  */
 class NetworkAppsActivity : Activity() {
     private val handler = Handler(Looper.getMainLooper())
+    private val worker: ExecutorService = Executors.newSingleThreadExecutor()
     private lateinit var content: LinearLayout
-    private var previousRx = -1L
-    private var previousTx = -1L
-    private var previousAt = 0L
+    private lateinit var rows: LinearLayout
+    private lateinit var totals: TextView
+    private lateinit var status: TextView
+    private var previous = emptyMap<Int, Pair<Long, Long>>()
+    private var lastQueryAt = 0L
+    private var queryInFlight = false
+    private var firstSnapshot = true
 
     private val refreshTask = object : Runnable {
         override fun run() {
-            if (!isFinishing) {
-                refreshCurrentApp()
-                handler.postDelayed(this, 1000L)
+            if (!isFinishing && !isDestroyed) {
+                collectTraffic()
+                handler.postDelayed(this, 3000L)
             }
         }
     }
@@ -52,7 +60,7 @@ class NetworkAppsActivity : Activity() {
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             setDimAmount(0.58f)
             attributes = attributes.apply {
-                width = (resources.displayMetrics.widthPixels * 0.90f).toInt()
+                width = (resources.displayMetrics.widthPixels * 0.92f).toInt()
                 height = WindowManager.LayoutParams.WRAP_CONTENT
                 gravity = Gravity.CENTER
             }
@@ -71,21 +79,23 @@ class NetworkAppsActivity : Activity() {
         super.onPause()
     }
 
+    override fun onDestroy() {
+        handler.removeCallbacks(refreshTask)
+        worker.shutdownNow()
+        super.onDestroy()
+    }
+
     private fun buildUi() {
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(18), dp(20), dp(18))
-            background = rounded(Color.rgb(10, 18, 34), 22, Color.rgb(42, 86, 125))
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            background = rounded(Color.rgb(13, 19, 31), 22, Color.rgb(48, 77, 106))
         }
-
-        val header = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
+        val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val title = TextView(this).apply {
-            text = "NETWORK APPS"
-            textSize = 14f
-            setTextColor(Color.rgb(87, 220, 255))
+            text = "NETWORK FLOW"
+            textSize = 15f
+            setTextColor(Color.rgb(92, 218, 255))
             typeface = Typeface.DEFAULT_BOLD
             letterSpacing = 0.08f
         }
@@ -95,168 +105,233 @@ class NetworkAppsActivity : Activity() {
             textSize = 22f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
-            background = rounded(Color.rgb(29, 43, 65), 30)
-            setOnClickListener { finish() }
+            background = rounded(Color.rgb(35, 47, 65), 30)
             contentDescription = "Close"
+            setOnClickListener { finish() }
         }
         header.addView(close, LinearLayout.LayoutParams(dp(38), dp(38)))
         content.addView(header)
 
-        val hint = TextView(this).apply {
-            text = "Apps active while mobile data is moving"
-            textSize = 11f
-            setTextColor(Color.rgb(151, 169, 196))
-            setPadding(0, dp(5), 0, dp(16))
+        totals = TextView(this).apply {
+            text = "↓  —     ↑  —"
+            textSize = 19f
+            typeface = Typeface.DEFAULT_BOLD
+            setTextColor(Color.WHITE)
+            setPadding(dp(12), dp(14), dp(12), dp(14))
+            background = rounded(Color.rgb(29, 39, 54), 14)
         }
-        content.addView(hint)
+        val totalParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) }
+        content.addView(totals, totalParams)
 
-        if (!hasUsageAccess()) {
-            showUsageAccessPrompt()
-        } else {
-            refreshCurrentApp()
+        status = TextView(this).apply {
+            text = "Preparing per-app traffic…"
+            textSize = 10f
+            setTextColor(Color.rgb(150, 169, 194))
+            setPadding(dp(2), dp(9), 0, dp(9))
         }
+        content.addView(status)
+
+        rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        content.addView(rows)
         setContentView(content)
+
+        if (!hasUsageAccess()) showUsageAccessPrompt()
     }
 
     private fun showUsageAccessPrompt() {
-        val message = TextView(this).apply {
-            text = "Allow Usage Access so BandWatch can identify which app is currently on screen. Android still limits exact per-app live traffic detection."
+        rows.removeAllViews()
+        rows.addView(TextView(this).apply {
+            text = "Enable Usage Access to let BandWatch read Android's per-app network accounting. This permission is required by Android."
             textSize = 13f
             setTextColor(Color.WHITE)
-            setPadding(0, dp(4), 0, dp(14))
-        }
-        content.addView(message)
-        content.addView(actionButton("ENABLE USAGE ACCESS") {
-            try {
-                startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-            } catch (_: Exception) {
-                startActivity(Intent(Settings.ACTION_SETTINGS))
+            setPadding(dp(8), dp(12), dp(8), dp(12))
+        })
+        rows.addView(Button(this).apply {
+            text = "ENABLE USAGE ACCESS"
+            setOnClickListener {
+                try { startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)) }
+                catch (_: Exception) { startActivity(Intent(Settings.ACTION_SETTINGS)) }
             }
         })
     }
 
-    private fun refreshCurrentApp() {
-        if (!::content.isInitialized || !hasUsageAccess()) return
-        val appPackage = currentForegroundPackage()
-        val moving = mobileTrafficMoving()
-        content.removeViews(2, (content.childCount - 2).coerceAtLeast(0))
+    private fun collectTraffic() {
+        if (!hasUsageAccess()) {
+            showUsageAccessPrompt()
+            return
+        }
+        if (queryInFlight) return
+        queryInFlight = true
+        status.text = "Reading Android per-app traffic…"
+        worker.execute {
+            val now = System.currentTimeMillis()
+            val snapshot = try {
+                readUidTotals(now - TimeUnit.HOURS.toMillis(24), now)
+            } catch (e: Exception) {
+                null
+            }
+            val sampleTime = android.os.SystemClock.elapsedRealtime()
+            val old = previous
+            val elapsed = if (lastQueryAt == 0L) 0L else sampleTime - lastQueryAt
+            val rates = if (snapshot != null && elapsed in 500L..30000L) {
+                snapshot.mapNotNull { (uid, bytes) ->
+                    val before = old[uid] ?: return@mapNotNull null
+                    val rx = (bytes.first - before.first).coerceAtLeast(0L)
+                    val tx = (bytes.second - before.second).coerceAtLeast(0L)
+                    val rxRate = rx * 1000L / elapsed
+                    val txRate = tx * 1000L / elapsed
+                    if (rxRate + txRate > 0L) uid to (rxRate to txRate) else null
+                }.toMap()
+            } else emptyMap()
+            if (snapshot != null) {
+                previous = snapshot
+                lastQueryAt = sampleTime
+            }
+            runOnUiThread {
+                queryInFlight = false
+                if (isFinishing || isDestroyed) return@runOnUiThread
+                if (snapshot == null) {
+                    status.text = "Android did not provide per-app stats. Check Usage Access."
+                    return@runOnUiThread
+                }
+                if (firstSnapshot) {
+                    firstSnapshot = false
+                    status.text = "Calibrating traffic counters… next refresh will calculate app speeds."
+                    return@runOnUiThread
+                }
+                renderRates(rates, elapsed)
+            }
+        }
+    }
 
-        if (moving && appPackage != null && appPackage != packageName) {
-            val row = LinearLayout(this).apply {
-                orientation = LinearLayout.HORIZONTAL
-                gravity = Gravity.CENTER_VERTICAL
-                setPadding(dp(12), dp(12), dp(12), dp(12))
-                background = rounded(Color.rgb(17, 31, 51), 15, Color.rgb(34, 75, 103))
-            }
-            val icon = ImageView(this)
+    private fun readUidTotals(start: Long, end: Long): Map<Int, Pair<Long, Long>> {
+        val manager = getSystemService(Context.NETWORK_STATS_SERVICE) as NetworkStatsManager
+        val result = HashMap<Int, Pair<Long, Long>>()
+        val types = intArrayOf(ConnectivityManager.TYPE_MOBILE, ConnectivityManager.TYPE_WIFI)
+        for (type in types) {
+            var stats: NetworkStats? = null
             try {
-                icon.setImageDrawable(packageManager.getApplicationIcon(appPackage))
-            } catch (_: Exception) {
-                icon.setImageResource(android.R.drawable.sym_def_app_icon)
+                stats = manager.querySummary(type, null, start, end)
+                val bucket = NetworkStats.Bucket()
+                while (stats.hasNextBucket()) {
+                    if (stats.getNextBucket(bucket)) {
+                        val uid = bucket.uid
+                        val old = result[uid] ?: (0L to 0L)
+                        result[uid] = (old.first + bucket.rxBytes) to (old.second + bucket.txBytes)
+                    }
+                }
+            } finally {
+                stats?.close()
             }
-            row.addView(icon, LinearLayout.LayoutParams(dp(42), dp(42)))
-            val label = try {
-                packageManager.getApplicationLabel(packageManager.getApplicationInfo(appPackage, 0)).toString()
-            } catch (_: Exception) {
-                appPackage
-            }
-            val name = TextView(this).apply {
-                text = label
-                textSize = 15f
-                setTextColor(Color.WHITE)
-                typeface = Typeface.DEFAULT_BOLD
-                setPadding(dp(12), 0, 0, 0)
-            }
-            row.addView(name, LinearLayout.LayoutParams(0, -2, 1f))
-            content.addView(row)
-            content.addView(TextView(this).apply {
-                text = "Foreground app • device-wide traffic detected"
-                textSize = 10f
-                setTextColor(Color.rgb(151, 169, 196))
-                setPadding(0, dp(10), 0, 0)
-            })
-        } else {
-            val empty = TextView(this).apply {
-                text = if (moving) "No foreground app identified" else "No current mobile data activity"
+        }
+        return result
+    }
+
+    private fun renderRates(rates: Map<Int, Pair<Long, Long>>, elapsed: Long) {
+        rows.removeAllViews()
+        val active = rates.entries.sortedByDescending { it.value.first + it.value.second }
+        val totalDown = active.sumOf { it.value.first }
+        val totalUp = active.sumOf { it.value.second }
+        totals.text = "↓  ${formatRate(totalDown)}     ↑  ${formatRate(totalUp)}"
+        status.text = "Per-app accounting • refreshed about every 3 sec • ${active.size} active UID(s)"
+
+        if (active.isEmpty()) {
+            rows.addView(TextView(this).apply {
+                text = "No per-app traffic change detected yet"
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(Color.rgb(190, 204, 224))
-                setPadding(dp(8), dp(24), dp(8), dp(24))
-                background = rounded(Color.rgb(17, 31, 51), 15)
-            }
-            content.addView(empty)
+                setPadding(dp(8), dp(22), dp(8), dp(22))
+                background = rounded(Color.rgb(24, 34, 49), 14)
+            })
+        } else {
+            active.take(12).forEach { entry -> addAppRow(entry.key, entry.value.first, entry.value.second, totalDown + totalUp) }
         }
-
-        content.addView(TextView(this).apply {
-            text = "Note: Android does not let BandWatch verify which app owns each live data packet. This is a best-effort foreground-app match."
+        val note = TextView(this).apply {
+            text = "Android updates these per-app counters in system-defined intervals. Values may arrive late or in jumps; this is the closest non-root method, not packet-by-packet capture."
             textSize = 9f
             setTextColor(Color.rgb(126, 145, 173))
             setPadding(0, dp(12), 0, 0)
-        })
-    }
-
-    private fun currentForegroundPackage(): String? {
-        val manager = getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-        val now = System.currentTimeMillis()
-        val events = manager.queryEvents(now - TimeUnit.SECONDS.toMillis(30), now)
-        val event = UsageEvents.Event()
-        var foreground: String? = null
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            val resumed = if (Build.VERSION.SDK_INT >= 29) {
-                event.eventType == UsageEvents.Event.ACTIVITY_RESUMED
-            } else {
-                @Suppress("DEPRECATION")
-                event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND
-            }
-            val paused = if (Build.VERSION.SDK_INT >= 29) {
-                event.eventType == UsageEvents.Event.ACTIVITY_PAUSED
-            } else {
-                @Suppress("DEPRECATION")
-                event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND
-            }
-            if (resumed) foreground = event.packageName
-            if (paused && foreground == event.packageName) foreground = null
         }
-        return foreground
+        rows.addView(note)
     }
 
-    private fun mobileTrafficMoving(): Boolean {
-        val rx = TrafficStats.getMobileRxBytes()
-        val tx = TrafficStats.getMobileTxBytes()
-        if (rx < 0L || tx < 0L) return false
-        val now = android.os.SystemClock.elapsedRealtime()
-        val active = previousRx >= 0L && previousTx >= 0L &&
-            now - previousAt in 1L..3000L &&
-            ((rx - previousRx).coerceAtLeast(0L) + (tx - previousTx).coerceAtLeast(0L) >= 1024L)
-        previousRx = rx
-        previousTx = tx
-        previousAt = now
-        return active
+    private fun addAppRow(uid: Int, down: Long, up: Long, total: Long) {
+        val packages = try { packageManager.getPackagesForUid(uid)?.toList().orEmpty() } catch (_: Exception) { emptyList() }
+        val label = when (uid) {
+            0 -> "System"
+            1000 -> "Android OS"
+            else -> packages.firstNotNullOfOrNull { pkg ->
+                try { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }
+                catch (_: Exception) { null }
+            } ?: "UID $uid"
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = rounded(Color.rgb(22, 31, 45), 13)
+        }
+        val icon = ImageView(this)
+        val appInfo = packages.firstNotNullOfOrNull { pkg ->
+            try { packageManager.getApplicationInfo(pkg, 0) } catch (_: Exception) { null }
+        }
+        try {
+            if (appInfo != null) icon.setImageDrawable(packageManager.getApplicationIcon(appInfo))
+            else icon.setImageResource(android.R.drawable.sym_def_app_icon)
+        } catch (_: Exception) { icon.setImageResource(android.R.drawable.sym_def_app_icon) }
+        row.addView(icon, LinearLayout.LayoutParams(dp(38), dp(38)))
+        val middle = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(10), 0, dp(6), 0)
+        }
+        middle.addView(TextView(this).apply {
+            text = label
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            typeface = Typeface.DEFAULT_BOLD
+            maxLines = 1
+        })
+        val bar = android.view.View(this).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.rgb(255, 155, 36), Color.rgb(255, 155, 36), Color.rgb(50, 196, 235))
+            ).apply { cornerRadius = dp(4).toFloat() }
+        }
+        middle.addView(bar, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(6) })
+        row.addView(middle, LinearLayout.LayoutParams(0, -2, 1f))
+        val value = TextView(this).apply {
+            text = "↓ ${formatRate(down)}\n↑ ${formatRate(up)}"
+            textSize = 10f
+            gravity = Gravity.END or Gravity.CENTER_VERTICAL
+            setTextColor(Color.rgb(225, 234, 246))
+            typeface = Typeface.DEFAULT_BOLD
+        }
+        row.addView(value)
+        val params = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) }
+        rows.addView(row, params)
+        val weight = if (total > 0L) ((down + up).toFloat() / total).coerceIn(0.04f, 1f) else 0.04f
+        bar.scaleX = weight
+        bar.pivotX = 0f
     }
 
     private fun hasUsageAccess(): Boolean {
         val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
         @Suppress("DEPRECATION")
-        val mode = appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName)
-        return mode == AppOpsManager.MODE_ALLOWED
+        return appOps.checkOpNoThrow(AppOpsManager.OPSTR_GET_USAGE_STATS, android.os.Process.myUid(), packageName) == AppOpsManager.MODE_ALLOWED
     }
 
-    private fun actionButton(text: String, action: () -> Unit) = Button(this).apply {
-        this.text = text
-        textSize = 11f
-        setTextColor(Color.WHITE)
-        isAllCaps = true
-        background = rounded(Color.rgb(28, 112, 175), 12)
-        setOnClickListener { action() }
+    private fun formatRate(bytes: Long): String = when {
+        bytes >= 1024L * 1024L -> String.format(java.util.Locale.US, "%.1f MB/s", bytes / 1048576.0)
+        bytes >= 1024L -> String.format(java.util.Locale.US, "%.0f KB/s", bytes / 1024.0)
+        else -> "${max(0L, bytes)} B/s"
     }
 
-    private fun rounded(color: Int, radius: Int, stroke: Int? = null) =
-        GradientDrawable().apply {
-            setColor(color)
-            cornerRadius = dp(radius).toFloat()
-            if (stroke != null) setStroke(dp(1), stroke)
-        }
+    private fun rounded(color: Int, radius: Int, stroke: Int? = null) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radius).toFloat()
+        if (stroke != null) setStroke(dp(1), stroke)
+    }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 }
