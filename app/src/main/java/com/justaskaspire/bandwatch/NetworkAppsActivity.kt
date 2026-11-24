@@ -48,7 +48,7 @@ class NetworkAppsActivity : Activity() {
         override fun run() {
             if (!isFinishing && !isDestroyed) {
                 collectTraffic()
-                handler.postDelayed(this, 3000L)
+                handler.postDelayed(this, 1000L)
             }
         }
     }
@@ -60,7 +60,7 @@ class NetworkAppsActivity : Activity() {
             addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND)
             setDimAmount(0.58f)
             attributes = attributes.apply {
-                width = (resources.displayMetrics.widthPixels * 0.92f).toInt()
+                width = (resources.displayMetrics.widthPixels * 0.88f).toInt()
                 height = WindowManager.LayoutParams.WRAP_CONTENT
                 gravity = Gravity.CENTER
             }
@@ -88,13 +88,13 @@ class NetworkAppsActivity : Activity() {
     private fun buildUi() {
         content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(18), dp(16), dp(18), dp(16))
+            setPadding(dp(10), dp(9), dp(10), dp(9))
             background = rounded(Color.rgb(13, 19, 31), 22, Color.rgb(48, 77, 106))
         }
         val header = LinearLayout(this).apply { gravity = Gravity.CENTER_VERTICAL }
         val title = TextView(this).apply {
-            text = "NETWORK FLOW"
-            textSize = 15f
+            text = "BandWatch"
+            textSize = 12f
             setTextColor(Color.rgb(92, 218, 255))
             typeface = Typeface.DEFAULT_BOLD
             letterSpacing = 0.08f
@@ -109,27 +109,8 @@ class NetworkAppsActivity : Activity() {
             contentDescription = "Close"
             setOnClickListener { finish() }
         }
-        header.addView(close, LinearLayout.LayoutParams(dp(38), dp(38)))
+        header.addView(close, LinearLayout.LayoutParams(dp(28), dp(28)))
         content.addView(header)
-
-        totals = TextView(this).apply {
-            text = "↓  —     ↑  —"
-            textSize = 19f
-            typeface = Typeface.DEFAULT_BOLD
-            setTextColor(Color.WHITE)
-            setPadding(dp(12), dp(14), dp(12), dp(14))
-            background = rounded(Color.rgb(29, 39, 54), 14)
-        }
-        val totalParams = LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) }
-        content.addView(totals, totalParams)
-
-        status = TextView(this).apply {
-            text = "Preparing per-app traffic…"
-            textSize = 10f
-            setTextColor(Color.rgb(150, 169, 194))
-            setPadding(dp(2), dp(9), 0, dp(9))
-        }
-        content.addView(status)
 
         rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         content.addView(rows)
@@ -162,7 +143,6 @@ class NetworkAppsActivity : Activity() {
         }
         if (queryInFlight) return
         queryInFlight = true
-        status.text = "Reading Android per-app traffic…"
         worker.execute {
             val now = System.currentTimeMillis()
             val snapshot = try {
@@ -191,12 +171,10 @@ class NetworkAppsActivity : Activity() {
                 queryInFlight = false
                 if (isFinishing || isDestroyed) return@runOnUiThread
                 if (snapshot == null) {
-                    status.text = "Android did not provide per-app stats. Check Usage Access."
                     return@runOnUiThread
                 }
                 if (firstSnapshot) {
                     firstSnapshot = false
-                    status.text = "Calibrating traffic counters… next refresh will calculate app speeds."
                     return@runOnUiThread
                 }
                 renderRates(rates, elapsed)
@@ -230,30 +208,19 @@ class NetworkAppsActivity : Activity() {
     private fun renderRates(rates: Map<Int, Pair<Long, Long>>, elapsed: Long) {
         rows.removeAllViews()
         val active = rates.entries.sortedByDescending { it.value.first + it.value.second }
-        val totalDown = active.sumOf { it.value.first }
-        val totalUp = active.sumOf { it.value.second }
-        totals.text = "↓  ${formatRate(totalDown)}     ↑  ${formatRate(totalUp)}"
-        status.text = "Per-app accounting • refreshed about every 3 sec • ${active.size} active UID(s)"
 
         if (active.isEmpty()) {
             rows.addView(TextView(this).apply {
-                text = "No per-app traffic change detected yet"
+                text = "—"
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setTextColor(Color.rgb(190, 204, 224))
-                setPadding(dp(8), dp(22), dp(8), dp(22))
+                setPadding(dp(6), dp(10), dp(6), dp(10))
                 background = rounded(Color.rgb(24, 34, 49), 14)
             })
         } else {
-            active.take(12).forEach { entry -> addAppRow(entry.key, entry.value.first, entry.value.second, totalDown + totalUp) }
+            active.take(8).forEach { entry -> addAppRow(entry.key, entry.value.first, entry.value.second, active.sumOf { it.value.first + it.value.second }) }
         }
-        val note = TextView(this).apply {
-            text = "Android updates these per-app counters in system-defined intervals. Values may arrive late or in jumps; this is the closest non-root method, not packet-by-packet capture."
-            textSize = 9f
-            setTextColor(Color.rgb(126, 145, 173))
-            setPadding(0, dp(12), 0, 0)
-        }
-        rows.addView(note)
     }
 
     private fun addAppRow(uid: Int, down: Long, up: Long, total: Long) {
@@ -269,7 +236,7 @@ class NetworkAppsActivity : Activity() {
         val row = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(8), dp(8), dp(8), dp(8))
+            setPadding(dp(5), dp(5), dp(5), dp(5))
             background = rounded(Color.rgb(22, 31, 45), 13)
         }
         val icon = ImageView(this)
@@ -280,14 +247,14 @@ class NetworkAppsActivity : Activity() {
             if (appInfo != null) icon.setImageDrawable(packageManager.getApplicationIcon(appInfo))
             else icon.setImageResource(android.R.drawable.sym_def_app_icon)
         } catch (_: Exception) { icon.setImageResource(android.R.drawable.sym_def_app_icon) }
-        row.addView(icon, LinearLayout.LayoutParams(dp(38), dp(38)))
+        row.addView(icon, LinearLayout.LayoutParams(dp(28), dp(28)))
         val middle = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(10), 0, dp(6), 0)
+            setPadding(dp(7), 0, dp(4), 0)
         }
         middle.addView(TextView(this).apply {
             text = label
-            textSize = 14f
+            textSize = 12f
             setTextColor(Color.WHITE)
             typeface = Typeface.DEFAULT_BOLD
             maxLines = 1
@@ -301,14 +268,14 @@ class NetworkAppsActivity : Activity() {
         middle.addView(bar, LinearLayout.LayoutParams(-1, dp(4)).apply { topMargin = dp(6) })
         row.addView(middle, LinearLayout.LayoutParams(0, -2, 1f))
         val value = TextView(this).apply {
-            text = "↓ ${formatRate(down)}\n↑ ${formatRate(up)}"
-            textSize = 10f
+            text = "↓ ${formatRate(down)}  ↑ ${formatRate(up)}"
+            textSize = 9f
             gravity = Gravity.END or Gravity.CENTER_VERTICAL
             setTextColor(Color.rgb(225, 234, 246))
             typeface = Typeface.DEFAULT_BOLD
         }
         row.addView(value)
-        val params = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(7) }
+        val params = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(3) }
         rows.addView(row, params)
         val weight = if (total > 0L) ((down + up).toFloat() / total).coerceIn(0.04f, 1f) else 0.04f
         bar.scaleX = weight
