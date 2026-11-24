@@ -118,7 +118,7 @@ class NetworkAppsActivity : Activity() {
         val rowScroll = ScrollView(this).apply {
             isFillViewport = true
             overScrollMode = ScrollView.OVER_SCROLL_NEVER
-            addView(rows, ScrollView.LayoutParams(-1, -2))
+            addView(rows, android.view.ViewGroup.LayoutParams(-1, -2))
         }
         content.addView(rowScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(content)
