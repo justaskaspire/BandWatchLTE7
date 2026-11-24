@@ -158,6 +158,17 @@ class MainActivity : Activity() {
             items.add(item)
         }
         navItems = items
+        val versionName = if (Build.VERSION.SDK_INT >= 33) {
+            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0)).versionName
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.getPackageInfo(packageName, 0).versionName
+        }
+        shell.addView(label("v${versionName ?: "0.0.0"}", 9f, muted, false).apply {
+            gravity = Gravity.CENTER
+            setPadding(0, dp(3), 0, dp(3))
+            contentDescription = "BandWatch version ${versionName ?: "unknown"}"
+        }, LinearLayout.LayoutParams(-1, dp(19)))
         shell.addView(nav, LinearLayout.LayoutParams(-1, dp(78)))
         setContentView(shell)
     }
