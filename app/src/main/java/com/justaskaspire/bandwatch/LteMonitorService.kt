@@ -258,7 +258,7 @@ class LteMonitorService : Service() {
     private fun notification(message: String): Notification {
         val speedEnabled = prefs.getBoolean("speed_indicator_enabled", true)
         val contentText = if (speedEnabled) latestSpeedText else message
-        val pending = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java),
+        val pending = PendingIntent.getActivity(this, 0, Intent(this, NetworkAppsActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or if (Build.VERSION.SDK_INT >= 23) PendingIntent.FLAG_IMMUTABLE else 0)
         return if (Build.VERSION.SDK_INT >= 26) {
             Notification.Builder(this, "monitor").setContentTitle("BandWatch").setContentText(contentText)
