@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
@@ -20,5 +21,10 @@
         </activity>
         <service android:name=".LteMonitorService" android:exported="false" android:foregroundServiceType="location" />
         <activity android:name=".HistoryActivity" android:exported="false" />
+        <activity
+            android:name=".NetworkAppsActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Material.Dialog.NoActionBar" />
     </application>
 </manifest>
