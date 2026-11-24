@@ -21,6 +21,7 @@ import android.view.WindowManager
 import android.widget.Button
 import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -61,7 +62,7 @@ class NetworkAppsActivity : Activity() {
             setDimAmount(0.58f)
             attributes = attributes.apply {
                 width = (resources.displayMetrics.widthPixels * 0.88f).toInt()
-                height = WindowManager.LayoutParams.WRAP_CONTENT
+                height = dp(260)
                 gravity = Gravity.CENTER
             }
         }
@@ -113,7 +114,13 @@ class NetworkAppsActivity : Activity() {
         content.addView(header)
 
         rows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        content.addView(rows)
+        rows.minimumHeight = dp(170)
+        val rowScroll = ScrollView(this).apply {
+            isFillViewport = true
+            overScrollMode = ScrollView.OVER_SCROLL_NEVER
+            addView(rows, ScrollView.LayoutParams(-1, -2))
+        }
+        content.addView(rowScroll, LinearLayout.LayoutParams(-1, 0, 1f))
         setContentView(content)
 
         if (!hasUsageAccess()) showUsageAccessPrompt()
@@ -158,8 +165,8 @@ class NetworkAppsActivity : Activity() {
                     val before = old[uid] ?: return@mapNotNull null
                     val rx = (bytes.first - before.first).coerceAtLeast(0L)
                     val tx = (bytes.second - before.second).coerceAtLeast(0L)
-                    val rxRate = rx * 1000L / elapsed
-                    val txRate = tx * 1000L / elapsed
+                    val rxRate = (rx.toDouble() * 1000.0 / elapsed).toLong()
+                    val txRate = (tx.toDouble() * 1000.0 / elapsed).toLong()
                     if (rxRate + txRate > 0L) uid to (rxRate to txRate) else null
                 }.toMap()
             } else emptyMap()
@@ -185,22 +192,22 @@ class NetworkAppsActivity : Activity() {
     private fun readUidTotals(start: Long, end: Long): Map<Int, Pair<Long, Long>> {
         val manager = getSystemService(Context.NETWORK_STATS_SERVICE) as NetworkStatsManager
         val result = HashMap<Int, Pair<Long, Long>>()
-        val types = intArrayOf(ConnectivityManager.TYPE_MOBILE, ConnectivityManager.TYPE_WIFI)
-        for (type in types) {
-            var stats: NetworkStats? = null
-            try {
-                stats = manager.querySummary(type, null, start, end)
-                val bucket = NetworkStats.Bucket()
-                while (stats.hasNextBucket()) {
-                    if (stats.getNextBucket(bucket)) {
-                        val uid = bucket.uid
-                        val old = result[uid] ?: (0L to 0L)
-                        result[uid] = (old.first + bucket.rxBytes) to (old.second + bucket.txBytes)
-                    }
+        // BandWatch monitors mobile data. Do not mix Wi-Fi usage into these rates.
+        var stats: NetworkStats? = null
+        try {
+            stats = manager.querySummary(ConnectivityManager.TYPE_MOBILE, null, start, end)
+            val bucket = NetworkStats.Bucket()
+            while (stats.hasNextBucket()) {
+                if (stats.getNextBucket(bucket)) {
+                    val uid = bucket.uid
+                    // UID_ALL and other negative aggregate buckets are not individual apps.
+                    if (uid < 0) continue
+                    val old = result[uid] ?: (0L to 0L)
+                    result[uid] = (old.first + bucket.rxBytes) to (old.second + bucket.txBytes)
                 }
-            } finally {
-                stats?.close()
             }
+        } finally {
+            stats?.close()
         }
         return result
     }
